@@ -267,14 +267,14 @@ func everyGateFrameExistsInTheAtlas(number: Int) throws {
     // The exhaustive M4 test builds descriptions without a world, so gate parts are excluded
     // there. This one supplies a world, which is what emits them.
     let world = World(try LevelRuntime(try GameData.level(number)))
-    let background = try GameData.atlasFrameNames(
-        named: world.level.data.type == .dungeon ? "dungeon" : "palace"
-    )
+    let backgroundName = world.level.data.type == .dungeon ? "dungeon" : "palace"
+    let sheets = try loadedAtlasFrames([backgroundName, "general"])
     var missing: Set<String> = []
     for room in world.level.roomNumbers {
-        for sprite in RoomRenderer.describe(world: world, room: room).sprites
-        where !background.contains(sprite.frameName) {
-            missing.insert(sprite.frameName)
+        for sprite in RoomRenderer.describe(world: world, room: room).sprites {
+            let sheet = sprite.atlas ?? backgroundName
+            guard sheets[sheet]?.contains(sprite.frameName) != true else { continue }
+            missing.insert("\(sheet)/\(sprite.frameName)")
         }
     }
     #expect(missing.isEmpty, "level \(number) needs frames the atlas lacks: \(missing.sorted())")

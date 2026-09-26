@@ -16,12 +16,38 @@ public enum Trob: Sendable, Equatable {
     case gate(Gate)
     case exitDoor(ExitDoor)
     case looseBoard(LooseBoard)
+    case spikes(Spikes)
+    case potion(Potion)
+    case sword(Sword)
 
-    public mutating func raise(stuck: Bool) {
+    /// What a trob tick produced. A chopper is the only tile that needs to say more than
+    /// "I made this noise" — see M7c-2.
+    public struct Outcome: Sendable, Equatable {
+        public var sound: SoundEffect?
+        /// Chopper.onChopped — the level must go and find the next chopper in the row.
+        public var chopped = false
+
+        public init(sound: SoundEffect? = nil, chopped: Bool = false) {
+            self.sound = sound
+            self.chopped = chopped
+        }
+    }
+
+    /// Returns the sound a raise made. Gates and doors do not report one; spikes do.
+    @discardableResult
+    public mutating func raise(stuck: Bool) -> SoundEffect? {
         switch self {
-        case var .gate(value): value.raise(stuck: stuck); self = .gate(value)
-        case var .exitDoor(value): value.raise(); self = .exitDoor(value)
-        case var .looseBoard(value): value.shake(fall: true); self = .looseBoard(value)
+        case var .gate(value):
+            value.raise(stuck: stuck); self = .gate(value); return nil
+        case var .exitDoor(value):
+            value.raise(); self = .exitDoor(value); return nil
+        case var .looseBoard(value):
+            value.shake(fall: true); self = .looseBoard(value); return nil
+        case var .spikes(value):
+            let sound = value.raise(); self = .spikes(value); return sound
+        case .potion, .sword:
+            // Level.fireEvent does "if (tile.raise)", and a potion has no such method.
+            return nil
         }
     }
 
@@ -29,25 +55,38 @@ public enum Trob: Sendable, Equatable {
         switch self {
         case var .gate(value): value.drop(); self = .gate(value)
         case var .exitDoor(value): value.drop(); self = .exitDoor(value)
-        case .looseBoard: break
+        case var .spikes(value): value.drop(); self = .spikes(value)
+        case .looseBoard, .potion, .sword: break
         }
     }
 
-    /// Advances the tile and reports any sound it made this tick.
-    public mutating func update() -> SoundEffect? {
+    /// Advances the tile and reports what it did.
+    public mutating func update() -> Outcome {
         switch self {
         case var .gate(value):
             let sound = value.update()
             self = .gate(value)
-            return sound
+            return Outcome(sound: sound)
         case var .exitDoor(value):
             let sound = value.update()
             self = .exitDoor(value)
-            return sound
+            return Outcome(sound: sound)
         case var .looseBoard(value):
             let sound = value.update()
             self = .looseBoard(value)
-            return sound
+            return Outcome(sound: sound)
+        case var .spikes(value):
+            value.update()
+            self = .spikes(value)
+            return Outcome()
+        case var .potion(value):
+            value.update()
+            self = .potion(value)
+            return Outcome()
+        case var .sword(value):
+            value.update()
+            self = .sword(value)
+            return Outcome()
         }
     }
 
@@ -63,6 +102,21 @@ public enum Trob: Sendable, Equatable {
 
     public var looseBoard: LooseBoard? {
         if case let .looseBoard(value) = self { return value }
+        return nil
+    }
+
+    public var spikes: Spikes? {
+        if case let .spikes(value) = self { return value }
+        return nil
+    }
+
+    public var potion: Potion? {
+        if case let .potion(value) = self { return value }
+        return nil
+    }
+
+    public var sword: Sword? {
+        if case let .sword(value) = self { return value }
         return nil
     }
 }

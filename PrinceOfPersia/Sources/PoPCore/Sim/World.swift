@@ -49,6 +49,59 @@ public struct World: Sendable {
         state.update().forEach { effects.append(.sound($0)) }
     }
 
+    /// Potions waiting for their one-second delay to elapse.
+    public private(set) var pendingPotions: [PendingPotion] = []
+
+    /// How long the third potion lasts: 18 s at the 1/12 s tick.
+    public static let floatTicks = 216
+
+    /// Queues a potion effect as if one had just been drunk.
+    ///
+    /// A seam for tests: only five levels contain a non-RECOVER potion, and no single level has
+    /// all five, so the effects cannot be exercised end to end from level data alone.
+    public mutating func queuePotionForTesting(_ effect: PotionEffect) {
+        pendingPotions.append(PendingPotion(effect: effect))
+    }
+
+    /// Ages the delayed potions by one tick and hands back the ones that have come due.
+    public mutating func advanceDelayedEffects() -> [PotionEffect] {
+        var due: [PotionEffect] = []
+        for index in pendingPotions.indices {
+            pendingPotions[index].ticksRemaining -= 1
+            if pendingPotions[index].ticksRemaining <= 0 {
+                due.append(pendingPotions[index].effect)
+            }
+        }
+        pendingPotions.removeAll { $0.ticksRemaining <= 0 }
+        return due
+    }
+
+    /// Ages every actor's float timer. Returns nothing; the flag simply clears.
+    public mutating func advanceFloatTimers() {
+        for index in actors.indices where actors[index].isInFloat {
+            actors[index].floatTicksRemaining -= 1
+            if actors[index].floatTicksRemaining <= 0 {
+                actors[index].isInFloat = false
+                actors[index].floatTicksRemaining = 0
+            }
+        }
+    }
+
+    /// `Spikes.raise` — brings a spike field up and reports the noise it made, if any.
+    @discardableResult
+    public mutating func raiseSpikes(at ref: TileRef) -> SoundEffect? {
+        guard var field = state.spikes(at: ref) else { return nil }
+        let sound = field.raise()
+        state.replace(trob: .spikes(field), at: ref)
+        return sound
+    }
+
+    /// The spike field at a position, if there is one.
+    public func spikes(at ref: TileRef) -> Spikes? { state.spikes(at: ref) }
+
+    /// `Level.removeObject` — a potion or sword leaves plain floor behind.
+    public mutating func removeObject(at ref: TileRef) { state.removeObject(at: ref) }
+
     /// `Button.push` — the floor-button sound, if a button actually went down.
     public func floorButtonSound(at ref: TileRef) -> SoundEffect? {
         state.floorButtonSound(at: ref)
@@ -85,6 +138,12 @@ public struct World: Sendable {
             switch effect {
             case let .shookLooseBoard(ref): state.shakeLooseBoard(at: ref)
             case let .maskedExitDoor(ref): state.maskExitDoor(at: ref)
+            case let .removedObject(ref): state.removeObject(at: ref)
+            case let .pendingPotion(isPrince, effect):
+                guard isPrince else { break }
+                pendingPotions.append(PendingPotion(
+                    effect: effect, ticksRemaining: PendingPotion.delayTicks
+                ))
             default: break
             }
         }

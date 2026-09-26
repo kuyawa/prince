@@ -10,10 +10,25 @@ public enum ActorEffect: Sendable, Equatable {
     case tap(Int)
 
     /// A sound to play. Emitted wherever the reference calls `game.sound.play`.
+    ///
+    /// `game.sound.play` does not distinguish effects from music: it plays whatever key is in
+    /// the audio cache. Only three `play` calls in the whole game name a *music* file — the
+    /// sword pickup, and the two life potions — so they get their own case rather than being
+    /// smuggled into `SoundEffect`.
+    case music(MusicTrack)
     case sound(SoundEffect)
 
     /// `DIE` (246). The actor is now dead.
     case died
+
+    /// The fourth potion turned the screen upside down. Purely presentational.
+    case flipScreen
+
+    /// `Level.removeObject` — a potion drunk or a sword taken leaves plain floor behind.
+    case removedObject(TileRef)
+
+    /// `Utils.delayed(..., 1000)` — the drink animation plays first, the effect lands after.
+    case pendingPotion(actorIsPrince: Bool, effect: PotionEffect)
 
     /// `NEXTLEVEL` (241). The caller drives the level transition and its music.
     case advanceToNextLevel

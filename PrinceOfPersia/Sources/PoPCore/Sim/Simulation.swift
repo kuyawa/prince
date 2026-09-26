@@ -73,9 +73,66 @@ public struct Simulation: Sendable {
         }
     }
 
+    /// How many of `effects` the world has already been told about this tick.
+    private var appliedEffectCount = 0
+
+    /// Hands the world the effects it has not seen yet.
+    ///
+    /// `effects` accumulates for the whole tick — the reference emits into a shared channel too —
+    /// and `step(actorAt:)` applies after each stage. Passing the whole array every time meant an
+    /// effect was applied once per *later* stage of the same tick, which is invisible for an
+    /// idempotent one (shaking a board, masking a door) and wrong for a counting one: a potion
+    /// drank once was queued three times and its theme played three times over itself.
+    private mutating func applyNewEffects() {
+        guard appliedEffectCount < effects.count else { return }
+        world.apply(Array(effects[appliedEffectCount...]))
+        appliedEffectCount = effects.count
+    }
+
+    /// `Kid.drinkPotion`'s delayed switch, and the two life-changing events that come with it.
+    ///
+    /// Only the Prince can drink, so this reads actor 0. The reference dispatches the effect from
+    /// the drinking actor's own closure, which for a guard would do the same thing — no guard
+    /// drinks, so one slot is the honest model.
+    private mutating func applyDuePotions() {
+        for effect in world.advanceDelayedEffects() {
+            var prince = world.actors[0]
+
+            switch effect {
+            case .recover:
+                // `recoverLife`: heals one, never past the maximum.
+                if prince.health < prince.maxHealth { prince.health += 1 }
+
+            case .add:
+                // `addLife`: raises the ceiling to ten and fills to it.
+                if prince.maxHealth < 10 { prince.maxHealth += 1 }
+                prince.health = prince.maxHealth
+
+            case .buffer:
+                // `floatFall`: eighteen seconds of gentle gravity and survivable falls.
+                prince.isInFloat = true
+                prince.floatTicksRemaining = World.floatTicks
+
+            case .flip:
+                // `flipScreen` toggles a global the renderer reads. Nothing in the simulation
+                // depends on it, so it goes out as an effect and stops there.
+                effects.append(.flipScreen)
+
+            case .damage:
+                // `flashRedDamage` plus the generic stab sound, then a point of health.
+                effects.append(.sound(.stabbedByOpponent))
+                Combat.damageLife(&prince, effects: &effects)
+            }
+
+            if let track = effect.music { effects.append(.music(track)) }
+            world.actors[0] = prince
+        }
+    }
+
     /// One simulation tick.
     public mutating func tick(intents: Intents) {
         effects.removeAll(keepingCapacity: true)
+        appliedEffectCount = 0
 
         // Guards first, matching the reference's creation order.
         for index in world.actors.indices.dropFirst() {
@@ -85,6 +142,10 @@ public struct Simulation: Sendable {
 
         // Gates and buttons advance once per tick, after the actors have moved.
         world.update(effects: &effects)
+
+        // The one-second drink animation, and the float potion's eighteen-second clock.
+        applyDuePotions()
+        world.advanceFloatTimers()
 
         clock.advance()
         ticksInLevel += 1
@@ -130,13 +191,13 @@ public struct Simulation: Sendable {
             world.rng = rng
         }
         world.actors[index] = actor
-        world.apply(effects)
+        applyNewEffects()
 
         // `processCommand`.
         actor = world.actors[index]
         try? interpreter.step(&actor, world: world, effects: &effects)
         world.actors[index] = actor
-        world.apply(effects)
+        applyNewEffects()
 
         // `updateAcceleration` then `updateVelocity`.
         actor = world.actors[index]
@@ -153,12 +214,25 @@ public struct Simulation: Sendable {
             world.actors[opponent] = other
         }
 
+        // `checkSpikes` — raise every spike field in this column, and in the next one along when
+        // he is near the edge of his tile. Runs *before* the floor probe below, which is what
+        // makes a field he disturbed himself still be rising when he steps onto it.
+        actor = world.actors[index]
+        TileChecks.checkSpikes(&actor, world: &world, effects: &effects)
+        world.actors[index] = actor
+
         // `checkButton`.
         actor = world.actors[index]
         if let pressed = TileChecks.checkButton(&actor, world: &world),
            let sound = world.floorButtonSound(at: pressed) {
             effects.append(.sound(sound))
         }
+        world.actors[index] = actor
+
+        // The `TILE_SPIKES` case of `checkFloor`'s standing branch. Separate from the call below
+        // because it needs a mutable world; the branches are mutually exclusive.
+        actor = world.actors[index]
+        TileChecks.checkSpikeFloor(&actor, world: &world, effects: &effects)
         world.actors[index] = actor
 
         // `checkFloor` — the standing branch can start a fall, the falling branch can end one.
@@ -172,7 +246,7 @@ public struct Simulation: Sendable {
             )
         }
         world.actors[index] = actor
-        world.apply(effects)
+        applyNewEffects()
 
         // `checkRoomChange`. The Prince uses Kid's threshold, guards use Fighter's.
         actor = world.actors[index]

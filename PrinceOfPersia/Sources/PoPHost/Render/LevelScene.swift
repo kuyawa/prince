@@ -53,6 +53,9 @@ public final class LevelScene: SKScene {
     /// disposable, and a scene that owns speakers is a scene that cannot be built in a test.
     public var onSound: ((SoundEffect) -> Void)?
 
+    /// Music the simulation asked for. Kept separate from `onSound` so the host can loop it.
+    public var onMusic: ((PoPCore.MusicTrack) -> Void)?
+
     /// Fires once, the first time a level's opening cue should play. Levels 2 and up re-use the
     /// Danger theme, so the coordinator needs to know that a level *started*, not just which one.
     public var onLevelStarted: ((_ level: Int, _ danger: Bool) -> Void)?
@@ -159,7 +162,11 @@ public final class LevelScene: SKScene {
 
         // Sounds last, so anything a level-finished callback starts is not immediately buried.
         for effect in simulation.effects {
-            if case let .sound(sound) = effect { onSound?(sound) }
+            switch effect {
+            case let .sound(sound): onSound?(sound)
+            case let .music(track): onMusic?(track)
+            default: break
+            }
         }
 
         // `Game.update`'s first tick: level 1 plays the Danger theme once, if the map allows it.
@@ -252,9 +259,7 @@ public final class LevelScene: SKScene {
     }
 
     private func makeNode(_ sprite: SpriteInstance) -> SKSpriteNode? {
-        let texture = characterTexture(sprite) ?? background.texture(
-            sprite.frameName, clipTop: sprite.clipTop
-        )
+        let texture = texture(for: sprite)
         guard let texture else { return nil }
 
         let node = SKSpriteNode(texture: texture)
@@ -267,17 +272,32 @@ public final class LevelScene: SKScene {
         return node
     }
 
-    /// Actor frames live in a per-character atlas; tiles live in the level's own.
-    private func characterTexture(_ sprite: SpriteInstance) -> SKTexture? {
+    /// Resolves a sprite to a texture.
+    ///
+    /// A tile draws from the level's own atlas and an actor from an atlas named for its
+    /// `charName`, so most sprites resolve by convention. An explicit `atlas` wins when the
+    /// description names one — the potion bubbles live in `general`, which belongs to neither.
+    private func texture(for sprite: SpriteInstance) -> SKTexture? {
+        if let name = sprite.atlas {
+            guard let sheet = characterAtlases[name] ?? (try? TextureAtlas(named: name)) else {
+                return nil
+            }
+            characterAtlases[name] = sheet
+            return sheet.texture(sprite.frameName, clipTop: sprite.clipTop)
+        }
         for atlas in characterAtlases.values {
             if let texture = atlas.texture(sprite.frameName, clipTop: sprite.clipTop) {
                 return texture
             }
         }
-        return nil
+        return background.texture(sprite.frameName, clipTop: sprite.clipTop)
     }
 
     /// Frame names present in no loaded atlas, for diagnostics.
+    ///
+    /// This is the check that catches a frame the renderer asks for and the atlas does not have:
+    /// a miss draws nothing at all, which on screen looks exactly like a tile that is meant to
+    /// be empty.
     public func missingFrames() -> [String] {
         let world = simulation.world
         let visible = world.actors.filter { $0.room == world.prince.room && $0.isVisible }
@@ -285,9 +305,7 @@ public final class LevelScene: SKScene {
             world: world, room: world.prince.room, actors: visible
         )
         return description.sprites
+            .filter { texture(for: $0) == nil }
             .map(\.frameName)
-            .filter { characterTexture(SpriteInstance(
-                frameName: $0, x: 0, y: 0, anchor: .topLeft, z: 0
-            )) == nil && background.texture($0) == nil }
     }
 }

@@ -93,6 +93,11 @@ public enum Behaviour {
             }
             if intents.contains(.up) { return jump(&state, world: world, effects: &effects) }
             if intents.contains(.down) { return stoop(&state, world: world) }
+            // The action key alone is the pickup: `if (this.keyS()) { return this.tryPickup(); }`.
+            if intents.contains(.action) {
+                return tryPickup(&state, world: world, effects: &effects)
+            }
+            if intents.contains(.down) { return stoop(&state, world: world) }
             // `tryPickup()` — potions and swords — is still M7c.
             if intents.contains(.action) { return }
 
@@ -127,7 +132,14 @@ public enum Behaviour {
 
         case "stoop":
             state.charRepeat = false
-            // Pickup paths (`gotSword`, `drinkPotion`) need the trob layer (M7).
+            // Frame 109 is the frame his hand is actually on the floor. Both pickups are gated on
+            // it, so a key pressed a frame early is simply carried until then.
+            if state.pickupSword, state.charFrame == 109 {
+                return gotSword(&state, world: world, effects: &effects)
+            }
+            if state.pickupPotion, state.charFrame == 109 {
+                return drinkPotion(&state, world: world, effects: &effects)
+            }
             if !intents.contains(.down), state.charFrame == 109 { return standup(&state) }
             if intents.contains(.left), state.charFace == -1, state.allowCrawl { return crawl(&state) }
             if intents.contains(.right), state.charFace == 1, state.allowCrawl { return crawl(&state) }
@@ -240,6 +252,103 @@ public enum Behaviour {
     public static func runstop(_ state: inout ActorState) {
         guard state.charFrame == 7 || state.charFrame == 11 else { return }
         state.beginAction("runstop")
+    }
+
+
+    // MARK: - Pickups
+
+    /// `Kid.tryPickup` — the SHIFT key while standing. Looks at the tile under him and the one
+    /// in front, and if either holds a sword or a potion, crouches onto it.
+    ///
+    /// **Two oddities are the reference’s and are reproduced.** Facing right, the step forward
+    /// is a whole column (`charBlockX++`) and then `charX` gains one unit *only for a potion*.
+    /// Facing left, the same `charBlockX++` moves him the *other* way, and `charX` lands three
+    /// units short of the column centre. The net effect is that he ends up over the item either
+    /// way, by two different routes, and `gotSword`/`drinkPotion` below depend on the result.
+    public static func tryPickup(
+        _ state: inout ActorState, world: any TileWorld, effects: inout [ActorEffect]
+    ) {
+        let here = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
+        let ahead = world.tile(
+            x: state.charBlockX + state.charFace, y: state.charBlockY, room: state.room
+        )
+
+        state.pickupSword = here.kind == .sword || ahead.kind == .sword
+        state.pickupPotion = here.kind == .potion || ahead.kind == .potion
+        guard state.pickupPotion || state.pickupSword else { return }
+
+        if state.charFace == 1 {
+            if ahead.kind == .potion || ahead.kind == .sword { state.charBlockX += 1 }
+            state.charX = CoordinateSpace.x(fromBlockX: state.charBlockX)
+                + (state.pickupPotion ? 1 : 0)
+        }
+        if state.charFace == -1 {
+            if here.kind == .potion || here.kind == .sword { state.charBlockX += 1 }
+            state.charX = CoordinateSpace.x(fromBlockX: state.charBlockX) - 3
+        }
+
+        state.beginAction("stoop")
+        state.allowCrawl = false
+    }
+
+    /// `Kid.gotSword` — the Prince picks up the sword, which is the moment level 1 turns from
+    /// a walk into a fight.
+    public static func gotSword(
+        _ state: inout ActorState, world: any TileWorld, effects: inout [ActorEffect]
+    ) {
+        state.pickupSword = false
+        state.allowCrawl = true
+        state.beginAction("pickupsword")
+        // `game.sound.play("Victory")`, and Victory is a music file: the theme strikes up as he
+        // takes the sword, which is what makes the moment land.
+        effects.append(.music(.victory))
+
+        if let ref = world.resolve(
+            x: state.charBlockX + state.charFace, y: state.charBlockY, room: state.room
+        ) {
+            effects.append(.removedObject(ref))
+        }
+        state.hasSword = true
+    }
+
+    /// `Kid.drinkPotion`.
+    ///
+    /// The bottle is consumed immediately; what it *does* lands a second later, which is what
+    /// makes the animation readable. The delay is a wall-clock timeout in the reference, so it is
+    /// counted in ticks here — twelve of them.
+    public static func drinkPotion(
+        _ state: inout ActorState, world: any TileWorld, effects: inout [ActorEffect]
+    ) {
+        state.pickupPotion = false
+
+        // The bottle in front comes first; falling back to the tile underfoot is what lets him
+        // drink one he is standing on rather than beside.
+        var ref = world.resolve(
+            x: state.charBlockX + state.charFace, y: state.charBlockY, room: state.room
+        )
+        if ref == nil || world.tile(
+            x: state.charBlockX + state.charFace, y: state.charBlockY, room: state.room
+        ).kind != .potion {
+            ref = world.resolve(x: state.charBlockX, y: state.charBlockY, room: state.room)
+        }
+        guard let ref, let potion = world.trob(
+            x: ref.x, y: ref.y, room: ref.room
+        )?.potion else {
+            state.allowCrawl = true
+            return
+        }
+
+        effects.append(.sound(.drinkPotionGlugGlug))
+        state.beginAction("drinkpotion")
+        effects.append(.removedObject(ref))
+
+        // A special potion — one with a modifier of 6 or more — fires an event instead of
+        // having a direct effect. No shipped level contains one; the data is honoured and the
+        // event plumbing is not built.
+        if potion.isSpecial { return }
+        if let effect = potion.effect {
+            effects.append(.pendingPotion(actorIsPrince: true, effect: effect))
+        }
     }
 
     /// `Kid.stoop` — crouching, or lowering yourself over an edge when there is space behind.

@@ -41,6 +41,9 @@ public struct LevelState: Sendable {
 
     public func trob(at ref: TileRef) -> Trob? { trobs[ref] }
 
+    /// Writes a trob back after mutating it.
+    public mutating func replace(trob: Trob, at ref: TileRef) { trobs[ref] = trob }
+
     /// Tiles that have changed since the level loaded.
     ///
     /// `Level.floorStartFall` replaces a collapsing board with `TILE_SPACE` outright:
@@ -124,6 +127,19 @@ public struct LevelState: Sendable {
                 case .looseBoard:
                     trobs[ref] = .looseBoard(LooseBoard())
 
+                case .spikes:
+                    // LevelBuilder only registers a spike field as a trob when its modifier is
+                    // zero. Every spike in all fourteen levels is modifier zero, so the guard
+                    // excludes nothing — but it is reproduced, because a custom map could
+                    // use a non-zero modifier to mean "always out".
+                    if tile.modifier == 0 { trobs[ref] = .spikes(Spikes(modifier: tile.modifier)) }
+
+                case .potion:
+                    trobs[ref] = .potion(Potion(modifier: tile.modifier, scatter: index))
+
+                case .sword:
+                    trobs[ref] = .sword(Sword(scatter: index))
+
                 case .raiseButton, .dropButton, .stuckButton:
                     var button = Button(kind: tile.kind)
                     // A button's modifier is the EVENT INDEX it fires — not a label.
@@ -157,38 +173,68 @@ public struct LevelState: Sendable {
         // A board that just gave way takes the floor out with it, for good.
         for (ref, var trob) in trobs {
             guard var board = trob.looseBoard else {
-                if let sound = trob.update() { sounds.append(sound) }
+                if let sound = trob.update().sound { sounds.append(sound) }
                 trobs[ref] = trob
                 continue
             }
             let wasFalling = board.phase == .falling
             if let sound = board.update() { sounds.append(sound) }
             if board.phase == .falling, !wasFalling {
-                // `onStartFalling` -> `Level.floorStartFall`.
+                // onStartFalling -> Level.floorStartFall.
                 overrides[ref] = Tile(kind: .space, modifier: 0)
             }
             trobs[ref] = .looseBoard(board)
         }
 
         for event in pending {
-            fire(event.event, kind: event.kind, stuck: event.stuck)
+            fire(event.event, kind: event.kind, stuck: event.stuck, sounds: &sounds)
         }
         return sounds
     }
 
     /// The actor stepped onto a button. Returns `true` if a button was actually pressed.
     @discardableResult
-    public mutating func pressButton(at ref: TileRef) -> Bool {
+    public mutating func pressButton(at ref: TileRef, sounds: inout [SoundEffect]) -> Bool {
         guard var button = buttons[ref] else { return false }
         button.push()
         buttons[ref] = button
         if button.isStuckFired { return true }
-        fire(button.eventNumber, kind: button.kind, stuck: false)
+        fire(button.eventNumber, kind: button.kind, stuck: false, sounds: &sounds)
         return true
+    }
+
+    @discardableResult
+    public mutating func pressButton(at ref: TileRef) -> Bool {
+        var sounds: [SoundEffect] = []
+        return pressButton(at: ref, sounds: &sounds)
     }
 
     /// The gate at a position, if there is one.
     public func gate(at ref: TileRef) -> Gate? { trobs[ref]?.gate }
+
+    /// The spike field at a position, if there is one.
+    public func spikes(at ref: TileRef) -> Spikes? { trobs[ref]?.spikes }
+
+    /// The potion at a position, if there is one.
+    public func potion(at ref: TileRef) -> Potion? { trobs[ref]?.potion }
+
+    /// The sword at a position, if there is one.
+    public func sword(at ref: TileRef) -> Sword? { trobs[ref]?.sword }
+
+    /// Whether the tile at a position is a spike field, trob or not.
+    public func hasSpikes(x: Int, y: Int, room: Int) -> Bool {
+        level.tile(x: x, y: y, room: room).kind == .spikes
+    }
+
+    /// `Level.removeObject` — a potion or a sword leaves a plain floor tile behind.
+    ///
+    /// The reference also splices the tile out of its `trobs` array, which is what stops a
+    /// drunk potion from being drinkable twice.
+    public mutating func removeObject(at ref: TileRef) {
+        guard trobs[ref] != nil else { return }
+        trobs.removeValue(forKey: ref)
+        overrides[ref] = Tile(kind: .floor, modifier: 0)
+    }
 
     /// Whether a gate blocks passage, resolving the tile the same way `Level.getTileAt` does.
     public func gateBlocks(x: Int, y: Int, room: Int) -> Bool {
@@ -218,6 +264,15 @@ public struct LevelState: Sendable {
     /// Holes are tolerated: M1 established that the events array has `null` entries at
     /// load-bearing positions, and the reference guards with `if (!this.events[event]) return`.
     public mutating func fire(_ event: Int, kind: TileKind, stuck: Bool) {
+        var sounds: [SoundEffect] = []
+        fire(event, kind: kind, stuck: stuck, sounds: &sounds)
+    }
+
+    /// The same, reporting the sounds the raised tiles made. Spikes announce themselves here;
+    /// gates and doors do not report one at all.
+    public mutating func fire(
+        _ event: Int, kind: TileKind, stuck: Bool, sounds: inout [SoundEffect]
+    ) {
         guard let trigger = level.data.event(at: event) else { return }
 
         let x = (trigger.location - 1) % Geometry.roomColumns
@@ -231,7 +286,7 @@ public struct LevelState: Sendable {
         // A raise button calls `raise` and a drop button calls `drop` — on whatever the tile is.
         if var trob = trobs[ref] {
             if kind == .raiseButton {
-                trob.raise(stuck: stuck)
+                if let sound = trob.raise(stuck: stuck) { sounds.append(sound) }
                 if target.kind == .exitLeft || target.kind == .exitRight {
                     isExitDoorOpen = true
                 }
@@ -241,9 +296,9 @@ public struct LevelState: Sendable {
             trobs[ref] = trob
         }
 
-        // Chaining. The reference drops `stuck` in the recursive call.
+        // Chaining. The reference drops the stuck flag in the recursive call.
         if trigger.next != 0 {
-            fire(event + 1, kind: kind, stuck: false)
+            fire(event + 1, kind: kind, stuck: false, sounds: &sounds)
         }
     }
 }

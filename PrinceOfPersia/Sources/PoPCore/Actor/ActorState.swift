@@ -112,7 +112,18 @@ public struct ActorState: Sendable, Equatable {
     public var sneakUp: Bool
 
     /// Read by `IFWTLESS` (247) to choose a floating variant of the current action.
+    ///
+    /// Set by the third potion and cleared eighteen seconds later. While it is on, a fall is
+    /// gentle (gravity 1 rather than 3) and cannot kill however far it is.
     public var isInFloat: Bool
+
+    /// Ticks left before `isInFloat` clears. 18 s at the 1/12 s tick.
+    public var floatTicksRemaining: Int
+
+    /// `Kid.pickupSword` — set by `tryPickup`, consumed at frame 109 of `stoop`.
+    public var pickupSword: Bool
+    /// `Kid.pickupPotion` — likewise.
+    public var pickupPotion: Bool
 
     /// Set by `checkFloor`'s fall branch. Used by `checkBarrier` (remaining M3 work).
     public var isInFallDown: Bool
@@ -201,6 +212,9 @@ public struct ActorState: Sendable, Equatable {
         self.charFood = false
         self.charFcheck = false
         self.charFthin = false
+        self.floatTicksRemaining = 0
+        self.pickupSword = false
+        self.pickupPotion = false
         self.hasSwordFrame = false
         self.swordFrame = 0
         self.swordDx = 0

@@ -70,6 +70,9 @@ public final class GameCoordinator {
         scene.onSound = { [weak self] sound in
             self?.audio.play(sound)
         }
+        scene.onMusic = { [weak self] track in
+            self?.audio.playMusic(track)
+        }
         scene.onLevelStarted = { [weak self] level, danger in
             self?.levelStarted(level, danger: danger)
         }

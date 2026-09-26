@@ -58,15 +58,21 @@ func value(for flag: String, in arguments: [String]) -> String? {
     return arguments[index + 1]
 }
 
+/// Intents from a flag value. Comma-separated, so `--hold down,action` means both at once —
+/// which is what drinking a potion or taking the sword actually needs.
 func intents(named name: String) -> Intents {
-    switch name {
-    case "left": [.left]
-    case "right": [.right]
-    case "up": [.up]
-    case "down": [.down]
-    case "right-run": [.right]
-    default: []
+    var result: Intents = []
+    for part in name.split(separator: ",") {
+        switch part.trimmingCharacters(in: .whitespaces) {
+        case "left": result.insert(.left)
+        case "right": result.insert(.right)
+        case "up": result.insert(.up)
+        case "down": result.insert(.down)
+        case "action": result.insert(.action)
+        default: break
+        }
     }
+    return result
 }
 
 let arguments = CommandLine.arguments
@@ -132,7 +138,9 @@ if let frameName = value(for: "--dump-frame", in: arguments),
 if arguments.contains("--trace") {
     let ticks = value(for: "--ticks", in: arguments).flatMap(Int.init) ?? 30
     var sounds: [SoundEffect] = []
+    var music: [PoPCore.MusicTrack] = []
     scene.onSound = { sounds.append($0) }
+    scene.onMusic = { music.append($0) }
     print("tick  actor        action           frame   x    y  bx by  hp  op")
     for tick in 1...ticks {
         scene.step()
@@ -151,6 +159,10 @@ if arguments.contains("--trace") {
         if !sounds.isEmpty {
             print("      sound: " + sounds.map(\.fileName).joined(separator: ", "))
             sounds.removeAll(keepingCapacity: true)
+        }
+        if !music.isEmpty {
+            print("      music: " + music.map(\.fileName).joined(separator: ", "))
+            music.removeAll(keepingCapacity: true)
         }
     }
     fflush(stdout)

@@ -55,7 +55,8 @@ public enum RoomRenderer {
                         y: baseY + part.dy,
                         anchor: .topLeft,
                         z: part.z,
-                        clipTop: part.clipTop
+                        clipTop: part.clipTop,
+                        atlas: part.atlas
                     ))
                 }
             }
@@ -78,6 +79,8 @@ public enum RoomRenderer {
         var z: Int
         /// Pixels cut from the top. Only gates use this.
         var clipTop: Int = 0
+        /// A sheet other than the level's own. Only the potion bubbles need this.
+        var atlas: String? = nil
     }
 
     /// The three sprite names a plain tile contributes.
@@ -155,6 +158,54 @@ public enum RoomRenderer {
             return [
                 TilePart(frame: background, z: tileBackgroundZ),
                 TilePart(frame: "\(prefix)_11_fg", z: tileForegroundZ),
+            ]
+        }
+
+        if tile.kind == .spikes {
+            // Spikes.js gives the field its own back and front child sprites, and *those* are
+            // what the animation swaps; the parent cells never change. The frame the modifier
+            // selects is aliased onto the field’s own `frame`, so a retracted field draws
+            // `_2_0` and an emerging one `_2_1` through `_2_5`.
+            let ref = TileRef(room: room, x: column, y: row)
+            let field = world?.state.trob(at: ref)?.spikes ?? Spikes(modifier: tile.modifier)
+            let frame = field.frameIndex
+
+            return [
+                TilePart(frame: "\(prefix)_2", z: tileBackgroundZ),
+                TilePart(frame: "\(prefix)_2_\(frame)", z: tileBackgroundDetailZ),
+                TilePart(frame: "\(prefix)_2_fg", z: tileForegroundZ),
+                TilePart(frame: "\(prefix)_2_\(frame)_fg", z: tileForegroundDetailZ),
+            ]
+        }
+
+        if tile.kind == .potion {
+            // Potion.js: the bottle is a *suffix on the front frame* — `dungeon_10_fg_1` —
+            // and the bubbles are a child of the front at (25, 53), or 49 for the three wider
+            // bottles. The bubbles live in the `general` atlas, not the level’s.
+            let ref = TileRef(room: room, x: column, y: row)
+            let potion = world?.state.trob(at: ref)?.potion
+            let variant = potion?.modifier ?? max(1, min(5, tile.modifier))
+            let step = potion?.step ?? 0
+            let color = potion?.color ?? Potion.bubbleColors[variant - 1]
+            let bottleY = (variant > 1 && variant < 5) ? 49 : 53
+
+            return [
+                TilePart(frame: "\(prefix)_10", z: tileBackgroundZ),
+                TilePart(frame: "\(prefix)_10_fg_\(variant)", z: tileForegroundZ),
+                TilePart(frame: "bubble_\(step + 1)_\(color)", dx: 25, dy: bottleY,
+                         z: tileForegroundDetailZ, atlas: "general"),
+            ]
+        }
+
+        if tile.kind == .sword {
+            // Sword.js swaps the *back* frame for a `_bright` variant when the blade glints.
+            let ref = TileRef(room: room, x: column, y: row)
+            let sword = world?.state.trob(at: ref)?.sword ?? Sword()
+            let background = sword.isBright ? "\(prefix)_22_bright" : "\(prefix)_22"
+
+            return [
+                TilePart(frame: background, z: tileBackgroundZ),
+                TilePart(frame: "\(prefix)_22_fg", z: tileForegroundZ),
             ]
         }
 

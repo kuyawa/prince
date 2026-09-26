@@ -56,6 +56,14 @@ public struct SpriteInstance: Sendable, Equatable {
     /// The host resolves this, because only the host knows the frame's pixel height.
     public var clipTop: Int
 
+    /// Which sheet the frame lives in, when the usual rule does not find it.
+    ///
+    /// Tiles draw from the level's own atlas and actors from an atlas named for their
+    /// `charName`, so most sprites need no hint. A potion's bubbles are the exception: the
+    /// reference asks for them by name out of the `general` sheet
+    /// (`game.make.sprite(25, yy, "general")`), which belongs to no tile and no actor.
+    public var atlas: String?
+
     public init(
         frameName: String,
         x: Int,
@@ -63,7 +71,8 @@ public struct SpriteInstance: Sendable, Equatable {
         anchor: SpriteAnchor,
         z: Int,
         flippedHorizontally: Bool = false,
-        clipTop: Int = 0
+        clipTop: Int = 0,
+        atlas: String? = nil
     ) {
         self.frameName = frameName
         self.x = x
@@ -72,6 +81,7 @@ public struct SpriteInstance: Sendable, Equatable {
         self.z = z
         self.flippedHorizontally = flippedHorizontally
         self.clipTop = clipTop
+        self.atlas = atlas
     }
 }
 

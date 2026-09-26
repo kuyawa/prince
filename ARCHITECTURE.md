@@ -1046,6 +1046,105 @@ flags, and `--trace` prints each tick's sounds by filename, never positionally.
 `Game.update` plays the Danger theme once, on level 1, 800 ms in, and only if the map's
 `prince.danger` is not `false`. The other Danger cues in the reference belong to the shadow
 encounters on levels 5 and 6, which are not ported.
+### 7.9.8 Hazards and pickups
+
+Spikes, potions and the sword. Choppers are M7c-2.
+
+#### What the level data actually contains
+
+A census of all fourteen levels settles several questions before any code is written:
+
+| Tile | Modifiers seen | Count |
+|---|---|---|
+| spikes | only `0` | 100 |
+| chopper | only `0` | 36 |
+| loose board | only `0` | 148 |
+| sword | only `0` | 2 |
+| potion | `1`–`5` | 47 |
+
+Two consequences. First, `Spikes`’ modifier remapping (3–5 collapse to 5, 6 becomes 4, above 6
+mirrors to `9 - m`) is **dead code in practice**, and the `modifier === 0` guard in `LevelBuilder`
+that decides which fields become trobs excludes nothing. Both are ported anyway — a custom map
+could use them — but no shipped level tests them.
+
+Second, `POTION_SPECIAL` is 6 and **no level contains one**. The reference’s special-potion path
+— read a modifier out of room 8 tile 0, then fire an event a second after drinking — is
+unreachable. `Potion.isSpecial` is modelled so the data is honest; the event plumbing is not
+built, because there is nothing to test it against.
+
+#### Spikes
+
+Five frames up, sixteen ticks out, four frames down. **The retraction skips frame 3**: `step` is
+decremented, and *then* an extra decrement fires if it landed on 3. So frame 3 appears on the way
+up and never on the way down. That asymmetry is the reference’s and is easy to “fix” by
+accident.
+
+Two things in `checkSpikes`/`checkFloor` look like mistakes and are not:
+
+1. **`inSpikeDistance` returns `true` unconditionally.** `Fighter` defines it that way and `Kid`
+   never overrides it, so the geometry test the name promises does not exist. Ported as written.
+
+2. **A running Prince only dies on a field that is *not* fully out.** That reads backwards until
+   you notice `checkSpikes` runs earlier in the same tick and raises the field one column ahead
+   when he is within five units of his tile edge. So the field is still rising when he steps onto
+   it, and the `FULL_OUT` exclusion only matters for a field somebody else raised.
+
+`checkSpikeFloor` is a separate function rather than a case inside `FallCycle.checkFloorStanding`,
+because raising a field mutates world state while the falling branch only reads. The action-code
+and `fcharfcheck` guards are duplicated on purpose: the two branches are mutually exclusive, so
+exactly one can fire for a given tile.
+
+Level 1 room 6 is the cleanest test in the game, and it is deliberate design:
+
+```
+row 0:  T  F  rb .  P  F  F  T  F  P       walk right, press the button at (2,0)
+row 1:  W  W  W  .  W  W  W  W  W  W       step off the edge at (3,0)
+row 2:  W  W  W  S  S  W  W  W  W  W       fall two rows onto the spikes
+```
+
+#### Potions
+
+Five effects, keyed on the modifier: `1` heals a point, `2` raises the ceiling and fills to it
+(capped at ten), `3` turns on the float, `4` flips the screen, `5` costs a point.
+
+**The bottle goes immediately; the effect lands twelve ticks later.** The reference wraps the
+whole switch in `Utils.delayed(..., 1000)`, which is what makes the drink animation readable. The
+port counts ticks — 1000 ms at 1/12 s — rather than reading a wall clock.
+
+The float is a real mechanic, not a visual: `updateAcceleration` uses gravity 1 and a top speed of
+4 instead of 3 and 33, and `land` reads `this.inFloat ? 0 : this.fallingBlocks`, so a floating
+Prince walks away from any drop. The reference also nudges ledge-swing and edge-grab distances
+while floating; those live in the ledge system, which is not ported.
+
+#### Two things the sound channel had to grow
+
+**`game.sound.play` does not distinguish effects from music.** Phaser plays whatever key is in the
+audio cache, and three calls in the game name a *music* file: `Victory` when the sword is taken,
+and `Potion1`/`Potion2` when a life potion lands. Hence `ActorEffect.music(MusicTrack)` alongside
+`ActorEffect.sound`.
+
+**`Preloader` does not load `Float`.** `Kid.floatFall` calls `sound.play("Float")` and Phaser
+quietly does nothing, because `assets/music/16_Float.mp3` was never registered. The port’s eight
+tracks are the complete set; “missing” music is the reference’s own gap.
+
+#### The main course lives in the `general` atlas
+
+A potion draws its bottle from the level’s atlas and its bubbles from `general` —
+`game.make.sprite(25, yy, "general", "bubble_3_green")`. That is the one sprite in the game that
+belongs to neither a tile nor an actor, so `SpriteInstance` grew an explicit `atlas` field rather
+than the host guessing by trying every loaded sheet.
+
+#### The pickup key
+
+`updateBehaviour`’s standing branch tests **up, then down, then the pickup key**. Holding down
+therefore crouches and never reaches an item; the item is taken by the action key *alone*. Getting
+this backwards produces a Prince who crouches forever on top of a sword, which is exactly what
+the first attempt did.
+
+`tryPickup` then repositions him with two different formulae — facing right a whole column forward
+and one unit for a potion, facing left the same `charBlockX++` (which moves him the *other* way)
+and three units back. Both land him over the item by different routes. Reproduced as written;
+`gotSword` and `drinkPotion` below depend on where it leaves him.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1293,6 +1392,13 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M7c | Spikes, potions and swords are trobs, driven by actors rather than by buttons | The reference raises a field from inside the actor’s own check; a button-driven model would miss the case where two actors disturb the same field |
+| M7c | `checkSpikeFloor` is separate from `FallCycle.checkFloorStanding` | Raising a field mutates the world; the falling branch only reads. The guard duplication is deliberate and the branches are mutually exclusive |
+| M7c | Potion effects are queued as `PendingPotion` on `World` and applied twelve ticks later | The reference delays them 1000 ms so the drink animation reads; twelve ticks is that second without a clock |
+| M7c | `ActorEffect.music` exists alongside `.sound` | Phaser’s `sound.play` plays music keys too, and three call sites name a music file |
+| M7c | `SpriteInstance` carries an optional `atlas` | A potion’s bubbles live in `general`, which belongs to no tile and no actor; guessing by trying every sheet would collide sooner or later |
+| M7c | `World.apply` is handed only the effects it has not seen | It was being handed the whole accumulated array once per stage, which is invisible for an idempotent effect and wrong for a counting one |
+| M7c | The special-potion event path is not built | `POTION_SPECIAL` is 6 and no shipped level contains one; there is nothing to test it against |
 | M8b | Sound reaches the host as `ActorEffect.sound`, not as a callback from the model | The reference plays sound by global side effect; the effect channel keeps `PoPCore` free of AVFoundation (Law 5) and a headless test silent |
 | M8b | The effects sink is an explicit `inout` parameter, not a `pendingSounds` array on `ActorState` | A field would leak into `Equatable` and would make "never ticked" indistinguishable from "no sounds" |
 | M8b | `Gate`/`ExitDoor`/`LooseBoard.update()` return `SoundEffect?` | The sound is produced by the same call that moves the sprite, so the two cannot drift apart |

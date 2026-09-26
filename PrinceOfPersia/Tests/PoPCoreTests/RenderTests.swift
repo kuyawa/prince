@@ -178,18 +178,42 @@ private func levelOne() throws -> LevelRuntime {
 
 // MARK: - The exhaustive atlas check
 
+/// Every frame name in the bundled atlases, keyed by sheet.
+///
+/// A frame the renderer asks for and no atlas has **draws nothing at all**, which on screen looks
+/// exactly like a tile that is meant to be empty. That is why this is checked exhaustively rather
+/// than spot-checked: the failure mode is silence.
+func loadedAtlasFrames(_ names: [String]) throws -> [String: Set<String>] {
+    var sheets: [String: Set<String>] = [:]
+    for name in names { sheets[name] = try GameData.atlasFrameNames(named: name) }
+    return sheets
+}
+
+/// The sheets a tile description can legitimately draw from.
+///
+/// A tile resolves against the level's own atlas, and anything the description marks with an
+/// explicit `atlas` against that one — a potion's bubbles live in `general`, which belongs to
+/// no tile and no actor.
+func spriteIsAvailable(_ sprite: SpriteInstance, sheets: [String: Set<String>]) -> Bool {
+    guard let name = sprite.atlas else { return false }
+    return sheets[name]?.contains(sprite.frameName) ?? false
+}
+
 @Test(arguments: GameData.levelNumbers)
 func everyFrameTheRendererAsksForExistsInAnAtlas(number: Int) throws {
     let level = try LevelRuntime(try GameData.level(number))
     let backgroundName = level.data.type == .dungeon ? "dungeon" : "palace"
-    let available = try GameData.atlasFrameNames(named: backgroundName)
-        .union(try GameData.atlasFrameNames(named: "kid"))
+    let sheets = try loadedAtlasFrames([backgroundName, "kid", "general"])
 
     var missing: Set<String> = []
     for room in level.roomNumbers {
-        for sprite in RoomRenderer.describe(level: level, room: room).sprites
-        where !available.contains(sprite.frameName) {
-            missing.insert(sprite.frameName)
+        for sprite in RoomRenderer.describe(level: level, room: room).sprites {
+            let sheet = sprite.atlas ?? backgroundName
+            guard sheets[sheet]?.contains(sprite.frameName) != true else { continue }
+            // An actor frame falls back to the kid sheet when the level's own atlas has no
+            // such name, which is how the M4 test has always resolved them.
+            if sprite.atlas == nil, sheets["kid"]?.contains(sprite.frameName) == true { continue }
+            missing.insert("\(sheet)/\(sprite.frameName)")
         }
     }
     #expect(missing.isEmpty, "level \(number) asks for frames the atlas lacks: \(missing.sorted())")

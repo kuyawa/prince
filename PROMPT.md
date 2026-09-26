@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M7c — hazards** *(spikes, choppers, potions)* |
-| **Last completed** | **M8b — the sound channel.** 242 tests pass |
-| **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
+| **Current milestone** | **M7c-2 — choppers** |
+| **Last completed** | **M7c-1 — spikes, potions and the sword.** 264 tests pass |
+| **Blocked on** | nothing. M3c (barriers, ledges) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M7c hazards, or the M6d presentation leftovers |
+| **Next action** | M7c-2 choppers, or the M6d presentation leftovers |
 
 ---
 
@@ -237,7 +237,42 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
   that asserts `charBlockX` before running the sequence is asserting the wrong thing. Cost me two
   attempts.
 
-**Still open (M7c):**
+**Done (M7c-1):**
+- [x] **Spikes** — the five-up/sixteen-out/four-down cycle, `checkSpikes`’ column walk, and the
+      standing branch’s impale check
+- [x] **`dieSpikes`** and **`alignToTile`**, which is how a body ends up inside the tile it died on
+- [x] **Potions** — all five effects, the twelve-tick delay, and `Level.removeObject`
+- [x] **Sword pickup** and `gotSword`, which is the moment level 1 turns into a fight
+- [x] **`ActorEffect.music`** — `game.sound.play` plays music keys too, and three call sites do
+- [x] **Rendering** for all three, including the potion bubbles in the `general` atlas
+
+**Found:**
+- **Every spike, chopper, loose board and sword in all fourteen levels has modifier 0.** So the
+  `modifier === 0` guard on spike trobs excludes nothing, and the modifier→sprite-frame remap is
+  dead code. Ported anyway; recorded so it is a decision rather than an oversight.
+- **`POTION_SPECIAL` (6) appears in no level.** The special-potion branch — read a modifier from
+  room 8 tile 0, fire an event a second later — is unreachable. Modelled in the data, not built.
+- **`inSpikeDistance` returns `true` unconditionally.** Neither `Kid` nor `Fighter` overrides it,
+  so the geometry test the name promises does not exist.
+- **A running Prince only dies on spikes that are not fully out.** It reads backwards until you see
+  that `checkSpikes` raised the field a tick earlier, so it is still rising when he steps on it.
+- **Spike retraction skips frame 3** — four ticks down against five up.
+- **The pickup key is the action key *alone*.** The standing branch checks up, then down, then
+  pickup, so holding down crouches forever on top of the sword. Cost me one wrong trace.
+- **`World.apply` was re-applying the whole accumulated effect list on every call within a tick.**
+  Invisible for idempotent effects; for the potion queue it meant one drink made three bottles and
+  the theme played over itself three times. Fixed by tracking how many effects the world has seen.
+- **`Preloader` never loads `Float`.** `Kid.floatFall` calls `sound.play("Float")` and Phaser does
+  nothing. The port’s eight music tracks are the complete set.
+- **A potion’s bubbles come from the `general` atlas**, not the level’s — the one sprite in the
+  game that belongs to neither a tile nor an actor.
+
+**Still open (M7c-2 and M6d):**
+- [ ] **Choppers** — `activateChopper`’s row cascade, and `chopDistance`
+- [ ] **SpriteMetrics** — `chopDistance` and `checkBarrier` both need live Phaser sprite widths
+      (`PIXI.Sprite.width = scale.x * texture.frame.width`, confirmed in the vendored Phaser). A cel
+      size table read from the atlas JSON unblocks both. Level 3 room 16 has three adjacent
+      choppers, which is the cascade test.
 - [ ] Spikes, choppers, potions; `checkSpikes` and `checkChoppers`
 - [ ] `tryPickup` — which makes `stoop`'s pickup branches reachable
 - [ ] `checkBarrier` (M3c) — still blocks `bump`, and so the mirror branches of `jump()`
@@ -356,9 +391,10 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [ ] **Optional oracle:** install SDL2, build SDLPoP, record a replay, diff a route
 
 ### M7 — Hazards and mechanisms
-- [ ] Gates, raise/drop/stuck buttons, loose boards, choppers, potions, spikes, exit door
-- [ ] Event triggers and `events[].next` chaining
-- [ ] Level 1 completable start to finish
+- [x] Gates, raise/drop/stuck buttons, loose boards, potions, spikes, exit door
+- [x] Event triggers and `events[].next` chaining
+- [x] Level 1 completable start to finish
+- [ ] **Choppers** — the one hazard left (M7c-2)
 
 ### M8 — Audio, UI, flow
 - [x] The mp3 bank and the sound channel *(M8b; `AVAudioPlayer`, not `AVAudioEngine` — the bank is

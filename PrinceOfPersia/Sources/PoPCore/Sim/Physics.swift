@@ -69,6 +69,32 @@ public enum FallCycle {
             - CoordinateSpace.x(fromBlockX: state.charBlockX)
     }
 
+    /// `Fighter.alignToTile` — snap an actor onto a tile, which is how a death by spikes or by
+    /// chopper puts the body in the right place.
+    ///
+    /// ```js
+    /// if (this.faceL()) { this.charX = convertBlockXtoX(tile.roomX) - 2; }
+    /// else              { this.charX = convertBlockXtoX(tile.roomX + 1) + 1; }
+    /// this.charY = convertBlockYtoY(tile.roomY);
+    /// this.room = tile.room;
+    /// ```
+    ///
+    /// Note the asymmetry: facing left he is pinned two units inside the *left* edge of the tile,
+    /// facing right one unit inside the *right* edge. The room change needs no `charX` shift here
+    /// because `updateBase` recomputes the screen origin from the new room — and the port's
+    /// renderer is room-local, so there is nothing to recompute.
+    public static func alignToTile(_ state: inout ActorState, to ref: TileRef) {
+        if state.charFace == -1 {
+            state.charX = CoordinateSpace.x(fromBlockX: ref.x) - 2
+        } else {
+            state.charX = CoordinateSpace.x(fromBlockX: ref.x + 1) + 1
+        }
+        state.charY = CoordinateSpace.y(fromBlockY: ref.y)
+        state.charBlockX = ref.x
+        state.charBlockY = ref.y
+        state.room = ref.room
+    }
+
     /// `Kid.inFallDistance` — whether a drop lies ahead.
     ///
     /// The `this.x === 0` test in the reference is a screen-space check whose meaning is
@@ -260,7 +286,9 @@ public enum FallCycle {
         state.charXVel = 0
         state.charYVel = 0
 
-        let fallingBlocks = state.fallingBlocks
+        // `let fallingBlocks = this.inFloat ? 0 : this.fallingBlocks` — a floating Prince walks
+        // away from a fall that would otherwise be fatal.
+        let fallingBlocks = state.isInFloat ? 0 : state.fallingBlocks
         state.fallingBlocks = 0
         state.isInFallDown = false
         state.swordDrawn = false
@@ -268,8 +296,16 @@ public enum FallCycle {
         // `Fighter.land` picks an action by how far he fell, and each has its own sound.
         let tile = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
         if tile.kind == .spikes {
-            effects.append(.sound(state.charName == "kid" ? .spikedBySpikes : .hardLandingSplat))
-            effects.append(.died)
+            // The reference plays the kid's impale scream for everyone here and notes the
+            // generic splat in a comment; the comment is the intent, the string is the code.
+            effects.append(.sound(.spikedBySpikes))
+            if let ref = world.resolve(x: state.charBlockX, y: state.charBlockY, room: state.room) {
+                alignToTile(&state, to: ref)
+            }
+            // `dieSpikes`: a skeleton is immune, everyone else is impaled.
+            if state.isAlive, state.charName != "skeleton" {
+                Combat.die(&state, action: "impale", effects: &effects)
+            }
         } else if state.isAlive {
             switch fallingBlocks {
             case 0, 1:
