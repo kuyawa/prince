@@ -84,8 +84,15 @@ public enum FallCycle {
         if state.charX == 0 || !["runstop", "runturn", "runjump", "standjump"].contains(state.action) {
             return true
         }
-        // The reference compares Phaser screen centres here; in engine units the tile
-        // centre is x(fromBlockX:) and the actor's centre is charX + charFdx * face.
+
+        // **Stubbed, and only reachable while running.** The reference compares Phaser sprite
+        // centres:
+        //     let offsetX = this.faceL() ? 10 : -14;
+        //     return Math.abs(tile.centerX - this.centerX + offsetX) >= 25;
+        // `centerX` is a screen-space sprite property, so reproducing it needs the same
+        // bounds work `checkBarrier` needs (open question 11). Returning `true` means a
+        // running actor over a gap always falls, which is the common case and matches the
+        // reference whenever the actor is not teetering on the very edge of a tile.
         return true
     }
 
@@ -101,6 +108,49 @@ public enum FallCycle {
         }
     }
 
+    /// `Kid.checkFloor`'s **standing** branch (action codes 0, 1, 5, 7).
+    ///
+    /// ```js
+    /// case 0: case 1: case 5: case 7:
+    ///   this.inFallDown = false;
+    ///   if (checkCharFcheck) {
+    ///     switch (tile.element) {
+    ///       case SPACE: case TOP_BIG_PILLAR: case TAPESTRY_TOP:
+    ///         if (!this.alive) return;
+    ///         if (this.inFallDistance(tileR)) this.startFall();
+    ///         ...
+    /// ```
+    ///
+    /// This is what makes the Prince drop when the ground disappears from under him — without
+    /// it he stands in mid-air over a gap, which is exactly what level 1's spawn is: the Prince
+    /// starts at column 1 of a room whose floor begins at column 3.
+    ///
+    /// The loose-board, spike and button cases of the same switch need the trob layer (M3c).
+    public static func checkFloorStanding(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
+        guard [0, 1, 5, 7].contains(state.actionCode) else { return }
+        state.isInFallDown = false
+
+        // `checkCharFcheck` — the frame's fcheck bit 6 gates the whole switch.
+        guard state.charFcheck else { return }
+
+        let tile = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
+        guard [TileKind.space, .topBigPillar, .tapestryTop].contains(tile.kind) else { return }
+        guard state.isAlive else { return }
+
+        // `tileR` is the tile *behind* the actor: `getTileAt(tile.roomX - this.charFace, ...)`.
+        let behind = world.tile(
+            x: state.charBlockX - state.charFace, y: state.charBlockY, room: state.room
+        )
+        if isInFallDistance(state, aheadTile: behind) {
+            try startFall(&state, world: world, interpreter: interpreter, effects: &effects)
+        }
+    }
+
     /// `Fighter.checkFall` — land if the actor has reached a walkable tile.
     public static func checkFall(
         _ state: inout ActorState,
@@ -108,6 +158,12 @@ public enum FallCycle {
         interpreter: SequenceInterpreter,
         effects: inout [ActorEffect]
     ) throws {
+        // `checkFloor` calls this for action codes 3 and 4, but a `stepfall` only probes the
+        // floor when `startFall` armed the flag — otherwise a scripted fall would land on its
+        // first tick, before any of its CHY instructions have moved the actor.
+        if state.actionCode == 3 && !state.checkFloorStepFall { return }
+        state.checkFloorStepFall = false
+
         let blockY = state.charBlockY
         guard state.charY + 6 >= CoordinateSpace.y(fromBlockY: blockY) else { return }
 
@@ -170,6 +226,11 @@ public enum FallCycle {
         interpreter: SequenceInterpreter,
         effects: inout [ActorEffect]
     ) throws -> String {
+        // These actions need an immediate floor probe; a plain step or run does not.
+        if ["turn", "turnrun", "turnengarde", "highjump", "hangdrop"].contains(state.action) {
+            state.checkFloorStepFall = true
+        }
+
         state.fallingBlocks = min(0, state.fallingBlocks)
         state.isInFallDown = true
 

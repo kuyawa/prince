@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M3c — barriers, ledges, trobs** *(M3 partly done)* |
-| **Last completed** | **M3b — the control layer.** 101 tests pass. Prince walks, runs, turns, stops |
-| **Blocked on** | nothing. M3c: `checkBarrier` needs bounds geometry untangled (open question 11) |
+| **Current milestone** | **M5 — level graph and room transitions** |
+| **Last completed** | **M4 — rendering.** 113 tests pass. Level 1 draws, and the Prince walks around it |
+| **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M3c, or skip to M4 rendering — the Prince can already walk and fall |
+| **Next action** | M5 room transitions, or M3c fidelity. Both are unblocked |
 
 ---
 
@@ -154,12 +154,25 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [ ] `Ticker`: fixed timestep accumulator, clamped catch-up, 12 Hz / 10 Hz
 - [ ] Headless trace: Prince walks, jumps, falls, lands correctly
 
-### M4 — Rendering
-- [ ] `AtlasLoader`: TexturePacker JSON → `SKTexture(rect:in:)` (**not** `SKTextureAtlas`)
-- [ ] `RenderDescription` / `SpriteInstance` as the sim→render contract (§7.9)
-- [ ] Room draw: background, foreground, wall-pattern generation via the LCG
-- [ ] Room camera, integer scaling, nearest-neighbour filtering
-- [ ] Level 1 on screen, Prince walking around it
+### M4 — Rendering ✅ *complete*
+- [x] `AtlasLoader` — TexturePacker JSON → `SKTexture(rect:in:)`, nearest filtering
+- [x] `RenderDescription` / `SpriteInstance` as the sim→render contract (§7.9)
+- [x] `RoomRenderer` — background, foreground, the `<element>_<modifier>` detail child, and
+      the 212 dungeon wall-shape frames
+- [x] `LevelScene` — the y-flip, `roomTopY = 189`, z order (back 10 / actor 20 / front 30)
+- [x] `KeyboardInput` → `Intents`; `--screenshot`, `--trace`, `--hold`, `--dump-frame`
+- [x] **113 tests pass**, including an exhaustive check that every frame the renderer asks for
+      exists in the atlas, across all 14 levels and every room
+- [x] Level 1 draws; the Prince falls out of his cell, lands, and walks
+
+**Found while rendering:**
+- `SKTexture(rect:in:)` measures from the **bottom-left**, TexturePacker from the top-left.
+  The bug is silent — the room rendered as plausible textured noise. The `--dump-frame`
+  diagnostic caught it.
+- **A mirror draws as floor** (`Tile.Mirror` passes `TILE_FLOOR`); there is no `dungeon_13`.
+- `checkFloor`'s falling branch **skips `stepfall`** unless `checkFloorStepFall` is armed —
+  without the guard a scripted fall lands on its first tick.
+- **Palace wall colour overlays are not ported** (open question 12). Level 4 renders flatter.
 
 ### M5 — Level graph and transitions
 - [ ] `RoomGraph`: room grid from `size`, `id == -1` holes, derived `links` (§6.1)
@@ -200,6 +213,13 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 swift build                      # compile everything
 swift test                       # headless simulation tests — the fast loop
 swift run Prince                 # launch the game
+
+# Diagnostics. --dump-frame is the one that caught the atlas origin bug: it renders a single
+# atlas frame at 1:1 so the slice can be compared against the source PNG.
+swift run Prince --trace --level 1
+swift run Prince --screenshot out.png --level 1 --ticks 5
+swift run Prince --screenshot out.png --level 1 --hold right --ticks 40
+swift run Prince --dump-frame dungeon_1 --screenshot frame.png --atlas dungeon
 
 # keep PoPCore honest (Law 5)
 grep -rE "import (SpriteKit|AppKit|GameplayKit|AVFoundation)" PrinceOfPersia/Sources/PoPCore/ \

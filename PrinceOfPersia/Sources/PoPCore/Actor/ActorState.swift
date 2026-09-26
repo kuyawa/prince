@@ -6,6 +6,10 @@
 /// can snapshot it, compare two runs, or step it backwards from a golden trace. Nothing
 /// here touches SpriteKit, and nothing here is a reference to anything.
 public struct ActorState: Sendable, Equatable {
+    /// Which sprite family this actor draws from — `"kid"`, `"guard"`, `"skeleton"`, and so
+    /// on. Selects the atlas prefix and the animation table.
+    public var charName: String
+
     // MARK: - The program
 
     /// The sequence currently executing. Named `action` in the reference.
@@ -80,6 +84,20 @@ public struct ActorState: Sendable, Equatable {
     /// Set by `checkFloor`'s fall branch. Used by `checkBarrier` (remaining M3 work).
     public var isInFallDown: Bool
 
+    /// Set by `startFall` for the actions that need an immediate floor probe, and consumed by
+    /// `checkFloor`'s falling branch.
+    ///
+    /// ```js
+    /// case 3: case 4:
+    ///   if (this.actionCode === 3 && !this.checkFloorStepFall) return;   // stepfall skips
+    ///   this.checkFloorStepFall = false;
+    ///   this.checkFall(tile);
+    /// ```
+    ///
+    /// Without this, a scripted `stepfall` lands on the first tick: its `charY` has not moved
+    /// yet, so `charY + 6 >= floorY` is already true.
+    public var checkFloorStepFall: Bool
+
     /// How many loose boards the actor has fallen through. 0 or 1 is survivable;
     /// more is fatal on landing (`Fighter.land`).
     public var fallingBlocks: Int
@@ -118,10 +136,17 @@ public struct ActorState: Sendable, Equatable {
     /// ARCHITECTURE.md open question 8. It is reproduced faithfully here so that
     /// behaviour matches the port source, and isolated here so that resolving the
     /// question changes exactly one expression.
-    public init(location: Int, room: Int, face: Int, action: String = "stand") {
+    public init(
+        location: Int,
+        room: Int,
+        face: Int,
+        action: String = "stand",
+        charName: String = "kid"
+    ) {
         let blockX = location % 10
         let blockY = location / 10
 
+        self.charName = charName
         self.action = action
         self.sequencePointer = 0
         self.isProcessing = false
@@ -154,6 +179,7 @@ public struct ActorState: Sendable, Equatable {
         self.swordDrawn = false
         self.isInFloat = false
         self.isInFallDown = false
+        self.checkFloorStepFall = false
         self.fallingBlocks = 0
 
         self.allowCrawl = true

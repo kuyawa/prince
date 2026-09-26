@@ -53,6 +53,19 @@ public enum GameData {
         try decode(SwordOffsetTable.self, from: "anims/sword.json")
     }
 
+    /// The frame names an atlas declares, without loading its image.
+    ///
+    /// Lets `PoPCoreTests` verify that every sprite the renderer asks for actually exists —
+    /// a check that otherwise only shows up as a silently missing tile on screen.
+    public static func atlasFrameNames(named name: String) throws -> Set<String> {
+        struct Sheet: Decodable {
+            let frames: [String: Entry]
+            struct Entry: Decodable {}
+        }
+        let sheet = try decode(Sheet.self, from: "gfx/\(name).json")
+        return Set(sheet.frames.keys)
+    }
+
     public static func decode<T: Decodable>(_ type: T.Type, from relativePath: String) throws -> T {
         let url = rootURL.appendingPathComponent(relativePath)
         guard FileManager.default.fileExists(atPath: url.path) else {

@@ -10,10 +10,10 @@ import PoPCore
 public final class WindowController: NSWindowController {
     public private(set) var scale: Int
 
-    private let scene: GameScene
+    private let scene: SKScene
     private let skView: SKView
 
-    public init(initialScale: Int) {
+    public init(initialScale: Int, scene: SKScene) {
         let normalized = WindowScale.fitted(initialScale)
         let size = WindowScale.windowSize(for: normalized)
 
@@ -30,14 +30,16 @@ public final class WindowController: NSWindowController {
 
         self.scale = normalized
         self.skView = view
-        // The scene is ALWAYS the native playfield, at every window scale.
-        self.scene = GameScene(size: WindowScale.playfieldSize)
+        // The scene is ALWAYS the native playfield, at every window scale. Window scale
+        // is applied by the view, so nothing here can change the simulation.
+        self.scene = scene
 
         super.init(window: window)
 
         window.title = "Prince of Persia"
         window.contentView = view
         window.contentMinSize = WindowScale.windowSize(for: WindowScale.absoluteRange.lowerBound)
+        scene.size = WindowScale.playfieldSize
         view.presentScene(scene)
         window.center()
         report()
