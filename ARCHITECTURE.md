@@ -1531,7 +1531,7 @@ prerequisite.
 
 The architecture document originally said "Xcode project for a signed `.app` bundle". That is the
 wrong shape for this codebase, and the reason is the test loop. The risky part of this port is the
-*simulation* — 333 headless tests running in half a second — and SwiftPM is what makes that half a
+*simulation* — a few hundred headless tests running in half a second — and SwiftPM is what makes that half a
 second. An Xcode project would put the fast loop behind a GUI, and the bundle is twenty lines of
 `cp` either way, so the project would buy nothing that the script does not.
 

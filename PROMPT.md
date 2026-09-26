@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **M9 — the `.app`, the icon, key bindings, distribution.** 333 tests pass |
+| **Last completed** | **M9 — the `.app`, the icon, key bindings, distribution, quit-on-close.** 339 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 8, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -507,7 +507,7 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 
 **Notes:**
 - **No Xcode project**, despite the original plan. The risky part of this port is the *simulation*,
-  and SwiftPM is what makes 333 headless tests run in half a second. An Xcode project would put
+  and SwiftPM is what makes the headless test suite run in half a second. An Xcode project would put
   that behind a GUI and buy nothing: the bundle is twenty lines of `cp` either way.
 - **The resource bundle must go in `Contents/Resources`**, not next to the binary — that is
   where `Bundle.module` searches. Getting it wrong gives an app that launches and immediately

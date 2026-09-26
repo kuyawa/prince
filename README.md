@@ -21,7 +21,7 @@ mashable, and it is the single most important thing to preserve.
 
 So the simulation is transcribed from the reference rather than re-derived, down to
 the numbers that look like mistakes. It is headless, deterministic from a seed, and
-covered by **333 tests** that run in half a second.
+covered by a few hundred tests that run in half a second.
 
 ---
 
@@ -219,7 +219,7 @@ cd PrinceOfPersia
 swift test
 ```
 
-333 tests, about half a second. They are all headless — no window, no audio device
+339 tests, about half a second. They are all headless — no window, no audio device
 — because the simulation is a pure value type and never touches either. That is the
 whole reason the port is structured the way it is, and it is what kept the work
 checkable.
@@ -239,7 +239,7 @@ PrinceOfPersia/
   Sources/PoPCore/     the faithful port. No Apple UI framework, ever.
   Sources/PoPHost/     the Swift 6 rewrite: rendering, input, audio, flow.
   Sources/Prince/      the executable, and its command-line flags.
-  Tests/               333 headless tests.
+  Tests/               the headless test suite
 
 Scripts/make-app.sh    assembles Prince of Persia.app
 ARCHITECTURE.md        the design, the laws, and every decision with its reason
