@@ -60,6 +60,22 @@ public enum MainMenu {
         viewItem.submenu = viewMenu
         mainMenu.addItem(viewItem)
 
+        // Window menu — which is what gives Cmd-W and Cmd-M somewhere to live. Without it the
+        // only way to close the window is the red button, and the delegate that quits on the last
+        // window closing would be almost unreachable.
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Minimize",
+                           action: #selector(NSWindow.performMiniaturize(_:)),
+                           keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Close",
+                           action: #selector(NSWindow.performClose(_:)),
+                           keyEquivalent: "w")
+        windowItem.submenu = windowMenu
+        mainMenu.addItem(windowItem)
+        // Telling AppKit it owns this menu is what makes it list the windows below the items.
+        NSApplication.shared.windowsMenu = windowMenu
+
         return mainMenu
     }
 }

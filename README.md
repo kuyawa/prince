@@ -95,11 +95,15 @@ and then rejected. Integer multiples only: a fractional scale would land the
 
 | Shortcut | Does |
 |---|---|
+| **⌘ W** | Close the window — which **quits the game**, since there is only one |
+| **⌘ M** | Minimise |
 | **⌘ K** | Open your key bindings in the default editor |
 | **⌘ Q** | Quit |
 | **⌘ H** | Hide |
 
-The **Options** menu also has **Reset Key Bindings to Default**.
+There is one window and no document, so closing it means you are done: the app terminates rather
+than sitting in the Dock doing nothing. The **Options** menu also has **Reset Key Bindings to
+Default**.
 
 ### Rebinding the keys
 

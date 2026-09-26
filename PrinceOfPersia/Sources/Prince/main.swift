@@ -86,6 +86,11 @@ let seedValue = value(for: "--seed", in: arguments).flatMap(Int.init) ?? 0
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 
+// Closing the window quits the game. `NSApplication.delegate` is a weak reference, so the
+// delegate is held here: a top-level `let` in main.swift is a global and lives for the process.
+let appDelegate = AppDelegate()
+app.delegate = appDelegate
+
 let scene: LevelScene
 do {
     scene = try buildScene(

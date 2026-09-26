@@ -1535,6 +1535,21 @@ wrong shape for this codebase, and the reason is the test loop. The risky part o
 second. An Xcode project would put the fast loop behind a GUI, and the bundle is twenty lines of
 `cp` either way, so the project would buy nothing that the script does not.
 
+#### Closing the window quits
+
+AppKit does not terminate when the last window closes. The default is right for an app with
+documents to keep open or a window to reopen, and wrong for this one: there is a single window, no
+document, and nothing to come back to. So `AppDelegate` answers
+`applicationShouldTerminateAfterLastWindowClosed` with `true`. Without it, closing the window leaves
+a game running invisibly behind its own Dock icon.
+
+`NSApplication.delegate` is a **weak** reference, so the delegate is held by a top-level `let` in
+`main.swift` — which is a global, and lives as long as the process. A delegate assigned inline and
+not stored is deallocated immediately and never called.
+
+A Window menu with Close and Minimise came with it. Not for its own sake: without a menu item
+carrying Cmd-W there is no way to close the window except the red button, and the delegate above
+would be almost unreachable.
 #### Why the signature is ad hoc
 
 `codesign --sign -` is a local, verified-at-launch signature that satisfies the *system*. It is not
@@ -1743,6 +1758,8 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M9 | Closing the last window quits the app | There is one window and no document, so leaving the process alive means an invisible game behind a Dock icon |
+| M9 | A Window menu with Close and Minimise | Without a Cmd-W menu item the close button is the only way to close the window, and the quit-on-close rule would rarely be reached |
 | M9 | The `.app` is assembled by a script, not an Xcode project | The risky part is the simulation, and SwiftPM is what makes its tests run in half a second. The bundle is twenty lines of `cp` either way |
 | M9 | The resource bundle goes in `Contents/Resources`, not next to the binary | That is where `Bundle.module` searches. Getting it wrong gives an app that launches and dies on a missing level file |
 | M9 | The signature is ad hoc, and that is documented rather than worked around | A Developer ID needs an account, which is a decision about the project rather than about the code |
