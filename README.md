@@ -3,6 +3,9 @@
 A faithful port of Jordan Mechner's 1989 *Prince of Persia* to **Swift 6** and
 **SpriteKit**, for macOS.
 
+The **source code is MIT** — take it. The **game's artwork, music and sound effects are
+Ubisoft's** and are here for preservation and study only; see [`ASSETS.md`](ASSETS.md).
+
 ![Prince of Persia running at 5x](screenshots/webshot.png)
 
 ---
@@ -242,8 +245,12 @@ PrinceOfPersia/
   Tests/               the headless test suite
 
 Scripts/make-app.sh    assembles Prince of Persia.app
+
+README.md              this file
 ARCHITECTURE.md        the design, the laws, and every decision with its reason
 PROMPT.md              the milestone board and what is still open
+LICENSE                MIT, for the source code
+ASSETS.md              the game's artwork, music and levels — Ubisoft's, and why they are here
 ```
 
 The split is enforced, not merely intended. `PoPCore` may not import SpriteKit,
@@ -285,19 +292,32 @@ ls /tmp/i.iconset          # ten images, 16x16 through 512x512@2x
 
 ## Licensing
 
-This is a **port**, written from publicly available reimplementations rather than
-from any original source. It contains no code from the 1989 game.
+**Two different things live in this repository, and they have two different owners.**
 
-The **game design and the artwork, music and sound effects are Ubisoft's**, and
-they ship with this repository because the port is meaningless without them. This
-is a preservation and learning project, not a product. Do not sell it. If you are
-Ubisoft and you would like it taken down, it will be.
+| | Licence |
+|---|---|
+| The **Swift source** — everything under `PrinceOfPersia/` and `Scripts/` | **MIT.** Yours to take. |
+| The **game's assets** — artwork, music, sound effects, level data | **Ubisoft's.** Not the author's to license. |
 
-The Swift source in this repository is the author's own work. Three reference
-implementations were read while writing it, and `ARCHITECTURE.md` section 2 records
-exactly what each one contributed:
+The full text is in [`LICENSE`](LICENSE), and [`ASSETS.md`](ASSETS.md) covers the assets: what
+they are, where they came from, and the position on them. The short version of the second one:
 
-* **PrinceJS** — the port source, The Unlicense.
+This is a **port**, written from publicly available reimplementations rather than from any
+original source. It contains no code from the 1989 game. The game design, artwork, music and
+sound effects belong to **Ubisoft**, and they ship here because a port of a game is meaningless
+without the game. This is a **preservation and study project**: it is not a product, it is not
+for sale, and **no rights in Prince of Persia are granted or claimed anywhere in it**. If you
+are Ubisoft and you would like it taken down, open an issue and it will be — no argument, no
+delay.
+
+**This repository is public**, which is worth stating plainly given the above: the assets are
+publicly visible here, and so is the compiled `.app` that embeds them.
+
+The Swift source is the author's own work. Three reference implementations were read while
+writing it, and `ARCHITECTURE.md` §2 records exactly what each one contributed — none of their
+code is present in this repository, and nothing was transcribed from the GPL one:
+
+* **PrinceJS** — the port source, and where the assets came from. The Unlicense.
 * **SDLPoP** — read as a behavioural oracle only, never transcribed. GPLv3.
 * **Mechner's Apple II source** — historical reference, not a port source.
 

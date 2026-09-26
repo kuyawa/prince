@@ -60,6 +60,9 @@ understand *why* the sequence table has the shape it does; do not translate them
   explicitly in `reference/POP-AppleII/README.md`.
 - **This is a personal/learning project.** Keep assets swappable (they already are — levels
   and atlases are plain JSON/PNG) so replacing them later is a content job, not a code job.
+- **The repository is public**, so the above is not hypothetical. `LICENSE` carries the MIT
+  grant for the source with an explicit carve-out for the assets, and `ASSETS.md` records what
+  each file is, where it came from, and the position on it.
 
 ---
 

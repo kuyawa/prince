@@ -1,0 +1,47 @@
+MIT License
+
+Copyright (c) 2026 kuyawa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+===============================================================================
+WHAT THIS LICENCE COVERS, AND WHAT IT DOES NOT
+===============================================================================
+
+The MIT grant above applies to the **source code in this repository**: everything
+under `PrinceOfPersia/` and `Scripts/`, and the prose in `README.md` and
+`ARCHITECTURE.md`. It is the author's own work, written from publicly available
+reimplementations rather than from any original source.
+
+It does **not** apply to the game itself. The artwork, music and sound effects
+are Ubisoft's, and no one but Ubisoft can license them. That includes:
+
+  PrinceOfPersia/Sources/PoPCore/Resources/    artwork, music, sound, level data
+  build/Prince of Persia.app/                  a compiled copy of the above
+  screenshots/, appicon.png                    screenshots of it, and an icon derived from it
+
+Those files are included because a port of a game is meaningless without the game's
+own assets. They are here for **preservation, study and demonstration**, they are not
+for sale, and they are not covered by the MIT grant — which is to say that nothing
+in this licence should be read as granting rights in Prince of Persia.
+
+See `ASSETS.md` for where each file came from and what the position is.
+
+If you are Ubisoft and you would like this repository taken down, open an issue and
+it will be removed.
