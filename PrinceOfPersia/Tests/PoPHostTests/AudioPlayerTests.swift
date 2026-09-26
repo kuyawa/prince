@@ -39,6 +39,23 @@ import PoPCore
 }
 
 @MainActor
+@Test func musicStartsAndSurvivesARepeatRequest() {
+    // The only cue the port has on a level start is level 1's Danger theme, so this is the path
+    // that actually runs in the game. Music off is tested above; music on has to reach the engine.
+    let audio = AudioPlayer(options: .init(soundEnabled: false, musicEnabled: true))
+    audio.playMusic(.danger)
+    #expect(audio.musicTrack == .danger)
+
+    // A second request for the track already playing is ignored, so the theme is not restarted
+    // every time a level re-issues the cue.
+    audio.playMusic(.danger)
+    #expect(audio.musicTrack == .danger)
+
+    audio.stopMusic()
+    #expect(audio.musicTrack == nil)
+}
+
+@MainActor
 @Test func askingForTheTrackAlreadyPlayingDoesNotRestartIt() {
     // The reference ignores a repeat of the current track. Levels 2 and up re-issue the Danger
     // cue, and restarting it every time would be audible as a stutter.
