@@ -84,7 +84,7 @@ public struct Simulation: Sendable {
         step(actorAt: 0, intents: intents)
 
         // Gates and buttons advance once per tick, after the actors have moved.
-        world.update()
+        world.update(effects: &effects)
 
         clock.advance()
         ticksInLevel += 1
@@ -125,7 +125,7 @@ public struct Simulation: Sendable {
             var rng = world.rng
             GuardBrain.update(
                 &actor, opponent: world.actors[0], world: world,
-                strength: world.strength, rng: &rng
+                strength: world.strength, rng: &rng, effects: &effects
             )
             world.rng = rng
         }
@@ -155,7 +155,10 @@ public struct Simulation: Sendable {
 
         // `checkButton`.
         actor = world.actors[index]
-        TileChecks.checkButton(&actor, world: &world)
+        if let pressed = TileChecks.checkButton(&actor, world: &world),
+           let sound = world.floorButtonSound(at: pressed) {
+            effects.append(.sound(sound))
+        }
         world.actors[index] = actor
 
         // `checkFloor` — the standing branch can start a fall, the falling branch can end one.

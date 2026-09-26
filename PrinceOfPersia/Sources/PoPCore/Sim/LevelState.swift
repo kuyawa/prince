@@ -82,6 +82,12 @@ public struct LevelState: Sendable {
         trobs[ref] = .looseBoard(board)
     }
 
+    /// `Button.push` — reports the floor-button sound when a button actually goes down.
+    public func floorButtonSound(at ref: TileRef) -> SoundEffect? {
+        guard let button = buttons[ref], button.kind != .stuckButton else { return nil }
+        return .floorButton
+    }
+
     /// The height a gate must clear before an actor fits underneath.
     ///
     /// The reference asks the live Phaser sprite (`this.height`), which varies by a pixel or two
@@ -137,8 +143,10 @@ public struct LevelState: Sendable {
     ///
     /// The reference drives this from `Game.updateWorld` on an 80 ms timer; a simulation tick is
     /// 1/12 s ≈ 83 ms, near enough that one call per tick is the faithful reading.
-    public mutating func update() {
+    @discardableResult
+    public mutating func update() -> [SoundEffect] {
         var pending: [(event: Int, kind: TileKind, stuck: Bool)] = []
+        var sounds: [SoundEffect] = []
 
         for (ref, var button) in buttons {
             if let push = button.update() {
@@ -149,12 +157,12 @@ public struct LevelState: Sendable {
         // A board that just gave way takes the floor out with it, for good.
         for (ref, var trob) in trobs {
             guard var board = trob.looseBoard else {
-                trob.update()
+                if let sound = trob.update() { sounds.append(sound) }
                 trobs[ref] = trob
                 continue
             }
             let wasFalling = board.phase == .falling
-            board.update()
+            if let sound = board.update() { sounds.append(sound) }
             if board.phase == .falling, !wasFalling {
                 // `onStartFalling` -> `Level.floorStartFall`.
                 overrides[ref] = Tile(kind: .space, modifier: 0)
@@ -165,6 +173,7 @@ public struct LevelState: Sendable {
         for event in pending {
             fire(event.event, kind: event.kind, stuck: event.stuck)
         }
+        return sounds
     }
 
     /// The actor stepped onto a button. Returns `true` if a button was actually pressed.
@@ -301,20 +310,27 @@ public struct Gate: Sendable, Equatable {
         }
     }
 
-    /// `Gate.update`.
-    public mutating func update() {
+    /// `Gate.update`. Returns the sound it made, if any.
+    ///
+    /// **Omitted:** the reference throttles the rising and closing sounds through two module-level
+    /// sets, so only one gate in the level plays at a time. With several gates moving together
+    /// this port layers them.
+    @discardableResult
+    public mutating func update() -> SoundEffect? {
         switch phase {
         case .closed, .open:
-            break
+            return nil
 
         case .raising:
             // Reaches the top, then holds there. The reference tests `posY === -47` exactly.
             if position == -Self.travel {
                 phase = .waiting
                 step = 0
-            } else {
-                position -= 1
+                return .gateStopsAtTop
             }
+            position -= 1
+            // Retriggered every other pixel, not every pixel.
+            return position % 2 == 0 ? .gateRising : nil
 
         case .waiting:
             step += 1
@@ -322,23 +338,32 @@ public struct Gate: Sendable, Equatable {
                 phase = .dropping
                 step = 0
             }
+            return nil
 
         case .dropping:
+            var sound: SoundEffect?
             if step == 0 {
                 position += 1
                 if position >= 0 {
                     position = 0
                     phase = .closed
+                    sound = .gateStopsAtTop
+                } else {
+                    sound = .gateComingDownSlow
                 }
             }
             step = (step + 1) % Self.dropInterval
+            return sound
 
         case .fastDropping:
+            let wasRaised = position < -1
             position += Self.fastDropStep
             if position >= 0 {
                 position = 0
                 phase = .closed
+                return wasRaised ? .gateReachesBottomClang : nil
             }
+            return nil
         }
     }
 }

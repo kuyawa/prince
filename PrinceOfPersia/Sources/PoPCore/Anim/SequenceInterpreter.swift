@@ -142,7 +142,10 @@ public struct SequenceInterpreter: Sendable {
             state.applyFrameDefinition(table.frameDefs[index], swordOffsets: swordOffsets)
             // Room transitions happen here, inside the sequence, exactly as in the reference:
             // `CMD_FRAME` is the only caller of `updateBlockXY`.
-            state.updateBlockPosition(world: world)
+            // `Fighter.updateFallingBlocks` fires the Prince's own cry the fifth floor down.
+            if state.updateBlockPosition(world: world) == 5, state.charName == "kid" {
+                effects.append(.sound(.fallingFloorLands))
+            }
             state.isProcessing = false
 
         case .goTo:
@@ -196,7 +199,20 @@ public struct SequenceInterpreter: Sendable {
             }
 
         case .tap:
-            effects.append(.tap(instruction.p1?.intValue ?? 0))
+            let value = instruction.p1?.intValue ?? 0
+            effects.append(.tap(value))
+
+            // `Kid.CMD_TAP` plays footsteps and soft bumps; `Enemy.CMD_TAP` returns unless the
+            // actor is the shadow, and then plays a *hard* bump. Everyone else is silent.
+            if state.charName == "kid", state.action == "softLand" { break }
+            let sound: SoundEffect? = switch (state.charName, value) {
+            case ("kid", 1): .footsteps
+            case ("kid", 2): .bumpIntoWallSoft
+            case ("shadow", 1): .footsteps
+            case ("shadow", 2): .bumpIntoWallHard
+            default: nil
+            }
+            if let sound { effects.append(.sound(sound)) }
 
         case .effect:
             break

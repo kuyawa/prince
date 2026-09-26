@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M8b — audio** *(or M7c hazards)* |
-| **Last completed** | **M8a — the hourglass and the status bar.** 224 tests pass |
+| **Current milestone** | **M7c — hazards** *(spikes, choppers, potions)* |
+| **Last completed** | **M8b — the sound channel.** 242 tests pass |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M8b audio, or M7c hazards. Both unblocked |
+| **Next action** | M7c hazards, or the M6d presentation leftovers |
 
 ---
 
@@ -311,9 +311,37 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - A space is a **1x1 glyph with an advance of four**, so the pen moves without anything being
   drawn.
 
-**Still open (M8b / M6d):**
-- [ ] **Audio** — the mp3 bank and `AVAudioEngine`; `ActorEffect.tap` and friends are emitted but
-      nothing plays them
+**Done (M8b):**
+- [x] **`SoundEffect`** (33 cases) and **`MusicTrack`** (8), raw values and filenames taken from
+      `Preloader.js`
+- [x] **`ActorEffect.sound`** — the transport. Call sites sit wherever the reference calls
+      `game.sound.play`, and the sink is an explicit `inout [ActorEffect]`
+- [x] **Opcode and verb hooks** — `TAP`, `engarde`/`turnengarde`, `strike`/`stab`/`checkFight`, and
+      `FallCycle.land`'s four landing sounds
+- [x] **Mechanisms** — `Gate.update()`, `ExitDoor.update()` and `LooseBoard.update()` return
+      `SoundEffect?`; `LevelState.update()` collects them into one array per tick
+- [x] **`Fighter.updateFallingBlocks`** — the fifth floor of a fall, kid only
+- [x] **`AudioPlayer`** — the only AVFoundation import in the project. Lazy decode, three-voice
+      round-robin per effect, looping music, silent on failure
+- [x] **Level 1's Danger theme**, 800 ms in, gated on the map's `prince.danger`
+- [x] Flags: `--mute`, `--no-music`, `--no-audio`, `--volume`; `--trace` prints sounds by filename
+
+**Found:**
+- **`FallingFloorLands` is not a landing sound.** It plays in mid-air five floors down — it is the
+  Prince's own cry — and only for `charName == "kid"`. The name is a trap; I had it wired to the
+  loose board.
+- **`Loose.sweep` plays `Sounds[0]`, a *shake* variant**, not a landing sound. The board's collapse
+  and its rattle are the same sample family.
+- **`AVAudioPlayer` is single-shot.** Calling `play()` on a player that is already playing restarts
+  it, so footsteps two ticks apart cut each other off. Voices, not one player.
+- **`MusicTrack` collides with AudioToolbox's `MusicTrack`** the moment AVFoundation is imported.
+  Has to be spelled `PoPCore.MusicTrack` in host code.
+- **`#expect`'s message is a `Comment`, not a `String`** — a built string has to go through
+  `Comment(rawValue:)`.
+- The reference plays only **one** cue on a level's first tick (level 1's Danger). The other two
+  Danger calls belong to the shadow encounters on levels 5 and 6, which are not ported.
+
+**Still open (M6d):**
 - [ ] The **time-up** hand-off: `timeUp` is detected but the host does not yet end the run
 - [ ] The dying animation's splash sprite, and the shadow overlay
 - [ ] `canReachOpponent` is **simplified** — the reference walks a tile path measured from
@@ -333,8 +361,10 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [ ] Level 1 completable start to finish
 
 ### M8 — Audio, UI, flow
-- [ ] `AVAudioEngine` with the mp3 bank; `CMD_TAP` sound hooks
-- [ ] Health pips, timer, `Space` to reveal remaining time, BMFont text
+- [x] The mp3 bank and the sound channel *(M8b; `AVAudioPlayer`, not `AVAudioEngine` — the bank is
+      mp3, and an engine buys nothing over forty decoded one-shots)*
+- [x] Health pips, timer, BMFont text *(M8a)*
+- [ ] `Space` to reveal remaining time
 - [ ] `GameFlow` `GKStateMachine`
 - [ ] Title, cutscenes (`Cutscene.js`), ending
 - [ ] The full 14-level chain
@@ -359,6 +389,10 @@ swift run Prince --trace --level 1
 swift run Prince --screenshot out.png --level 1 --ticks 5
 swift run Prince --screenshot out.png --level 1 --hold right --ticks 40
 swift run Prince --dump-frame dungeon_1 --screenshot frame.png --atlas dungeon
+
+# Audio. --trace labels every sound by filename, never by position.
+swift run Prince --trace --level 1 --hold right --ticks 200 | grep sound:
+swift run Prince --no-audio --level 1     # silent, for a screen recording
 
 # keep PoPCore honest (Law 5)
 grep -rE "import (SpriteKit|AppKit|GameplayKit|AVFoundation)" PrinceOfPersia/Sources/PoPCore/ \

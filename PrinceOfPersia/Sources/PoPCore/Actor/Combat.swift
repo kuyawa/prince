@@ -164,18 +164,27 @@ public enum Combat {
 
     /// `Fighter.engarde` — draw and take up a stance.
     @discardableResult
-    public static func engarde(_ f: inout ActorState, world: any TileWorld) -> Bool {
+    public static func engarde(
+        _ f: inout ActorState,
+        world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) -> Bool {
         guard f.hasSword else { return false }
         guard !Behaviour.nearBarrier(f, world: world) else { return false }
 
         f.beginAction("engarde")
         f.swordDrawn = true
         f.flee = false
+        if f.charName == "kid" { effects.append(.sound(.unsheatheSword)) }
         return true
     }
 
     /// `Fighter.turnengarde`.
-    public static func turnengarde(_ f: inout ActorState, _ o: ActorState) {
+    public static func turnengarde(
+        _ f: inout ActorState,
+        _ o: ActorState,
+        effects: inout [ActorEffect]
+    ) {
         guard f.hasSword, !f.flee else { return }
         guard f.action != "turnengarde" else { return }
         guard ["stand", "engarde", "advance", "retreat"].contains(f.action) else { return }
@@ -183,6 +192,7 @@ public enum Combat {
 
         // The Prince only takes the long way round from a standing start at a distance.
         let isKid = f.charName == "kid"
+        if isKid, !f.swordDrawn { effects.append(.sound(.unsheatheSword)) }
         f.beginAction(isKid && f.action == "stand" && abs(o.charX - f.charX) > 10
             ? "beginturnengarde" : "turnengarde")
         f.swordDrawn = true
@@ -216,8 +226,15 @@ public enum Combat {
     }
 
     /// `Fighter.strike`.
-    public static func strike(_ f: inout ActorState, _ o: ActorState) {
+    public static func strike(
+        _ f: inout ActorState,
+        _ o: ActorState,
+        effects: inout [ActorEffect]
+    ) {
         if !onSameLevel(f, o), f.charName != "kid" { return }
+
+        // The Prince's swing whistles on two frames.
+        if f.charName == "kid", f.frameID(157, 158) { effects.append(.sound(.stabAir)) }
 
         if f.frameID(157, 158) || f.frameID(165) || f.frameID(170, 171)
             || f.frameID(7, 8) || f.frameID(20, 21) || f.frameID(15) {
@@ -252,6 +269,8 @@ public enum Combat {
         guard f.isAlive else { return }
         f.charY = CoordinateSpace.y(fromBlockY: f.charBlockY)
         guard f.health > 0 else { return }
+
+        effects.append(.sound(f.charName == "kid" ? .stabbedByOpponent : .stabOpponent))
 
         if f.charName != "skeleton" {
             if f.charName == "kid", !f.swordDrawn {
@@ -350,8 +369,8 @@ public enum Combat {
             if !o.isAlive {
                 sheathe(&f)
             } else if distance < -4 {
-                if !facingOpponent(f, o) { turnengarde(&f, o) }
-                if !facingOpponent(o, f) { turnengarde(&o, f) }
+                if !facingOpponent(f, o) { turnengarde(&f, o, effects: &effects) }
+                if !facingOpponent(o, f) { turnengarde(&o, f, effects: &effects) }
             }
 
         case "strike":
@@ -370,6 +389,7 @@ public enum Combat {
                 }
             } else {
                 // The opponent is mid-strike or mid-block: steel rings, nobody bleeds.
+                effects.append(.sound(.swordClash))
                 o.blocked = true
                 f.beginAction("blockedstrike")
             }

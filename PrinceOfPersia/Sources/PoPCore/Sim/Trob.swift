@@ -33,11 +33,21 @@ public enum Trob: Sendable, Equatable {
         }
     }
 
-    public mutating func update() {
+    /// Advances the tile and reports any sound it made this tick.
+    public mutating func update() -> SoundEffect? {
         switch self {
-        case var .gate(value): value.update(); self = .gate(value)
-        case var .exitDoor(value): value.update(); self = .exitDoor(value)
-        case var .looseBoard(value): value.update(); self = .looseBoard(value)
+        case var .gate(value):
+            let sound = value.update()
+            self = .gate(value)
+            return sound
+        case var .exitDoor(value):
+            let sound = value.update()
+            self = .exitDoor(value)
+            return sound
+        case var .looseBoard(value):
+            let sound = value.update()
+            self = .looseBoard(value)
+            return sound
         }
     }
 
@@ -114,10 +124,11 @@ public struct ExitDoor: Sendable, Equatable {
         if phase != .closed { phase = .dropping }
     }
 
-    public mutating func update() {
+    @discardableResult
+    public mutating func update() -> SoundEffect? {
         switch phase {
         case .open, .closed:
-            break
+            return nil
 
         case .raising:
             if visibleHeight <= openHeight {
@@ -126,6 +137,7 @@ public struct ExitDoor: Sendable, Equatable {
             } else {
                 visibleHeight -= 1
             }
+            return nil
 
         case .dropping:
             if visibleHeight >= closedHeight {
@@ -134,6 +146,7 @@ public struct ExitDoor: Sendable, Equatable {
             } else {
                 visibleHeight = min(closedHeight, visibleHeight + Self.dropStep)
             }
+            return nil
         }
     }
 }
@@ -182,21 +195,35 @@ public struct LooseBoard: Sendable, Equatable {
         phase == .shaking && step == Self.shakeFrames
     }
 
-    public mutating func update() {
+    /// `Loose.update`. Returns the sound it made.
+    ///
+    /// The reference plays a shake on frames 0, 3 and 7, choosing among **three** variants with
+    /// `Utils.random(3)` — a non-deterministic call in the port source. All three are the same
+    /// shake with different trims, so this always plays the first rather than threading a
+    /// generator through a tile update for a cosmetic choice.
+    @discardableResult
+    public mutating func update() -> SoundEffect? {
         switch phase {
         case .inactive:
-            break
+            return nil
 
         case .shaking:
             if step == Self.shakeFrames {
+                // `Loose.fallStarted` -> `sweep`, which plays `Sounds[0]` — a shake, not a landing.
                 phase = .falling
                 step = 0
-            } else if step == Self.settleFrame && !willFall {
+                return .looseFloorShakes1
+            }
+            if step == Self.settleFrame, !willFall {
                 // Never stood on hard enough to break: it settles.
                 phase = .inactive
-            } else {
-                step += 1
+                return nil
             }
+            step += 1
+            if step == 0 || step == Self.settleFrame || step == Self.shakeFrames - 1 {
+                return .looseFloorShakes1
+            }
+            return nil
 
         case .falling:
             step += 1
@@ -205,6 +232,7 @@ public struct LooseBoard: Sendable, Equatable {
             if Self.fallVelocity * step * (step + 1) / 2 > Geometry.blockHeight {
                 phase = .inactive
             }
+            return nil
         }
     }
 }

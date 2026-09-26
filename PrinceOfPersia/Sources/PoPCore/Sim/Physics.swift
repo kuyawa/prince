@@ -265,15 +265,24 @@ public enum FallCycle {
         state.isInFallDown = false
         state.swordDrawn = false
 
+        // `Fighter.land` picks an action by how far he fell, and each has its own sound.
         let tile = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
         if tile.kind == .spikes {
+            effects.append(.sound(state.charName == "kid" ? .spikedBySpikes : .hardLandingSplat))
             effects.append(.died)
         } else if state.isAlive {
             switch fallingBlocks {
             case 0, 1:
+                effects.append(.sound(.softLanding))
                 state.beginAction("stand")
+            case 2:
+                effects.append(.sound(.mediumLandingOof))
+                state.beginAction("medland")
+                // A medium landing hurts.
+                state.health = max(0, state.health - 1)
             default:
-                // Landed on too many falling blocks: fatal.
+                // Landed on through too many floors: fatal.
+                effects.append(.sound(.freeFallLand))
                 state.isAlive = false
                 effects.append(.died)
             }

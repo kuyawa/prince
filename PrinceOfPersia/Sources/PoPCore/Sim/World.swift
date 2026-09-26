@@ -44,6 +44,16 @@ public struct World: Sendable {
         state.update()
     }
 
+    /// The same tick, with the sounds the mechanisms made handed to the caller.
+    public mutating func update(effects: inout [ActorEffect]) {
+        state.update().forEach { effects.append(.sound($0)) }
+    }
+
+    /// `Button.push` — the floor-button sound, if a button actually went down.
+    public func floorButtonSound(at ref: TileRef) -> SoundEffect? {
+        state.floorButtonSound(at: ref)
+    }
+
     @discardableResult
     public mutating func pressButton(at ref: TileRef) -> Bool {
         state.pressButton(at: ref)

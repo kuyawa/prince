@@ -201,12 +201,13 @@ private func guardFighter(skill: Int = 0) -> ActorState {
     foe.room = 22
     foe.hasStartedFight = false
     var rng = LCG(seed: 1)
-    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng)
+    var fx: [ActorEffect] = []
+    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng, effects: &fx)
     #expect(!foe.hasStartedFight)
 
     // In the same room, it wakes up.
     foe.room = 21
-    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng)
+    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng, effects: &fx)
     #expect(foe.hasStartedFight)
 }
 
@@ -219,8 +220,11 @@ private func guardFighter(skill: Int = 0) -> ActorState {
         var hero = prince()
         var rng = LCG(seed: seed)
         var actions: [String] = []
+        var fx: [ActorEffect] = []
         for _ in 0..<60 {
-            GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng)
+            GuardBrain.update(
+                &foe, opponent: hero, world: world, strength: 100, rng: &rng, effects: &fx
+            )
             actions.append(foe.action)
         }
         return (actions, rng.state)
@@ -250,14 +254,15 @@ private func guardFighter(skill: Int = 0) -> ActorState {
     #expect(!Combat.facingOpponent(foe, hero))
 
     var rng = LCG(seed: 3)
-    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng)
+    var fx: [ActorEffect] = []
+    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng, effects: &fx)
     // It has noticed — they are in the same room — but must not draw.
     #expect(foe.hasStartedFight)
     #expect(!foe.swordDrawn, "it will not engage a crouching Prince it is not facing")
 
     // Facing him, it does draw.
     foe.charFace = -1
-    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng)
+    GuardBrain.update(&foe, opponent: hero, world: world, strength: 100, rng: &rng, effects: &fx)
     #expect(foe.swordDrawn)
 }
 
@@ -274,33 +279,36 @@ private func guardFighter(skill: Int = 0) -> ActorState {
     var state = prince()
     state.action = "engarde"
 
+    var fx: [ActorEffect] = []
+
     // Off-frame: nothing.
     state.charFrame = 100
-    Combat.strike(&state, guardFighter())
+    Combat.strike(&state, guardFighter(), effects: &fx)
     #expect(state.action == "engarde")
 
     // On-frame: the strike begins.
     state.charFrame = 157
-    Combat.strike(&state, guardFighter())
+    Combat.strike(&state, guardFighter(), effects: &fx)
     #expect(state.action == "strike")
 
     // From a neutral frame it becomes a wind-up instead.
     state.action = "engarde"
     state.charFrame = 150
-    Combat.strike(&state, guardFighter())
+    Combat.strike(&state, guardFighter(), effects: &fx)
     #expect(state.action == "blocktostrike")
 }
 
 @Test func engardeNeedsASwordAndClearGround() throws {
     let world = try worldOne()
+    var fx: [ActorEffect] = []
     var unarmed = prince()
     unarmed.hasSword = false
-    #expect(!Combat.engarde(&unarmed, world: world))
+    #expect(!Combat.engarde(&unarmed, world: world, effects: &fx))
 
     var armed = prince()
     armed.action = "stand"
     armed.swordDrawn = false
-    #expect(Combat.engarde(&armed, world: world))
+    #expect(Combat.engarde(&armed, world: world, effects: &fx))
     #expect(armed.swordDrawn)
     #expect(armed.action == "engarde")
 }

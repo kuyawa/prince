@@ -332,7 +332,8 @@ public struct ActorState: Sendable, Equatable {
     ///
     /// **`charX` stays room-local.** Crossing a boundary shifts it by a whole room (140
     /// x-units) so the actor appears at the opposite edge of the room it just entered.
-    public mutating func updateBlockPosition(world: (any ActorWorldQuery)? = nil) {
+    @discardableResult
+    public mutating func updateBlockPosition(world: (any ActorWorldQuery)? = nil) -> Int {
         let footX = charX + charFdx * charFace - charFfoot * charFace
         let footY = charY + charFdy
 
@@ -340,15 +341,21 @@ public struct ActorState: Sendable, Equatable {
         charBlockX = CoordinateSpace.blockX(fromX: footX)
         charBlockY = min(CoordinateSpace.blockY(fromY: footY), 2)
 
-        updateFallingBlocks(previousBlockY: previousBlockY)
+        let dropped = updateFallingBlocks(previousBlockY: previousBlockY)
         transitionRoomIfNeeded(world: world)
+        return dropped
     }
 
     /// `Fighter.updateFallingBlocks` — counts the floor levels the actor has dropped through.
-    /// More than one is fatal on landing.
-    private mutating func updateFallingBlocks(previousBlockY: Int) {
-        guard isInFallDown else { return }
-        if charBlockY != previousBlockY { fallingBlocks += 1 }
+    /// More than one is fatal on landing. Returns the new count when the actor just dropped a
+    /// level, and zero otherwise, so the caller can fire the one-shot sound at exactly five.
+    private mutating func updateFallingBlocks(previousBlockY: Int) -> Int {
+        guard isInFallDown else { return 0 }
+        if charBlockY != previousBlockY {
+            fallingBlocks += 1
+            return fallingBlocks
+        }
+        return 0
     }
 
     private mutating func transitionRoomIfNeeded(world: (any ActorWorldQuery)?) {

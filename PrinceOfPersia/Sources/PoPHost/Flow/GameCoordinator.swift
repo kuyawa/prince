@@ -13,6 +13,10 @@ public final class GameCoordinator {
     private let input: KeyboardInput
     private let seed: Int
 
+    /// Owned here rather than by the scene: music outlives any one level, and the effects pool
+    /// should not be thrown away every time the Prince climbs a staircase.
+    public let audio: AudioPlayer
+
     public private(set) var levelNumber: Int
     public private(set) var scene: LevelScene
 
@@ -33,11 +37,15 @@ public final class GameCoordinator {
         return next <= finalLevel ? next : nil
     }
 
-    public init(view: SKView, level: Int, seed: Int, input: KeyboardInput) throws {
+    public init(
+        view: SKView, level: Int, seed: Int, input: KeyboardInput,
+        audio: AudioPlayer? = nil
+    ) throws {
         self.view = view
         self.input = input
         self.seed = seed
         self.levelNumber = level
+        self.audio = audio ?? AudioPlayer()
         self.scene = try GameCoordinator.makeScene(
             level: level, seed: seed, input: input, health: nil, maxHealth: nil
         )
@@ -59,6 +67,26 @@ public final class GameCoordinator {
         scene.onLevelFinished = { [weak self] completed, health, maxHealth in
             self?.levelFinished(completed, health: health, maxHealth: maxHealth)
         }
+        scene.onSound = { [weak self] sound in
+            self?.audio.play(sound)
+        }
+        scene.onLevelStarted = { [weak self] level, danger in
+            self?.levelStarted(level, danger: danger)
+        }
+    }
+
+    /// `Game.update`’s opening cue.
+    ///
+    /// Only level 1 has music on the first tick: `PrinceJS.danger` is set from the map’s
+    /// `prince.danger` flag and only ever for level 1, and the other Danger cues in the reference
+    /// belong to the shadow encounters on levels 5 and 6, which are not ported. The 800 ms delay is
+    /// the reference’s own — it lets the level settle before the theme drops.
+    private func levelStarted(_ level: Int, danger: Bool) {
+        guard level == 1, danger else { return }
+        Task { [audio] in
+            try? await Task.sleep(for: .milliseconds(800))
+            audio.playMusic(.danger)
+        }
     }
 
     /// Presents the level and hands the scene back to the caller to put in a window.
@@ -72,6 +100,7 @@ public final class GameCoordinator {
 
         guard let next = Self.nextLevel(after: completed) else {
             // The Princess is rescued; there is nowhere further to go.
+            audio.stopMusic()
             print("[Prince] level \(completed) complete — the game is finished")
             fflush(stdout)
             return
@@ -81,6 +110,7 @@ public final class GameCoordinator {
             let nextScene = try GameCoordinator.makeScene(
                 level: next, seed: seed, input: input, health: health, maxHealth: maxHealth
             )
+            audio.flush()
             scene = nextScene
             levelNumber = next
             wire()

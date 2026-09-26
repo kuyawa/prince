@@ -9,6 +9,9 @@ public enum ActorEffect: Sendable, Equatable {
     /// 1 = footsteps, 2 = bump into wall soft, 3 = bump into wall hard.
     case tap(Int)
 
+    /// A sound to play. Emitted wherever the reference calls `game.sound.play`.
+    case sound(SoundEffect)
+
     /// `DIE` (246). The actor is now dead.
     case died
 

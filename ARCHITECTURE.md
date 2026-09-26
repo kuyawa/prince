@@ -973,6 +973,79 @@ description, so the host has nothing to measure — the same split as every othe
 Note the pen advances by `xadvance`, not glyph width: a space is a 1x1 glyph with an advance of
 four, so it moves the pen without drawing anything.
 
+### 7.9.7 Sound
+
+The reference plays sound as a **global side effect**: `this.game.sound.play("Footsteps")`, called
+from inside `Kid.TAP`, `Fighter.strike`, `Gate.update`, `Button.push`. There are forty-odd such call
+sites scattered across the model, and none of them returns anything.
+
+That is the one place the reference's shape cannot be copied literally, because `PoPCore` may not
+import AVFoundation (Law 5) and a headless test must not open an audio device. The port keeps the
+*call sites* exactly where the reference has them and changes only the *transport*:
+
+```swift
+// PoPCore
+public enum ActorEffect: Sendable, Equatable {
+    case sound(SoundEffect)      // wherever the reference calls game.sound.play
+    ...
+}
+```
+
+An opcode or a verb appends `.sound(...)` to an `inout [ActorEffect]`; `Simulation.tick` drains that
+array after each actor step; `LevelScene` turns it into an `onSound` callback; `AudioPlayer` decides
+what comes out of the speakers. **The simulation never learns that speakers exist.**
+
+The `effects` sink is threaded through `Combat`, `GuardBrain` and `TileChecks` as an explicit
+`inout` parameter rather than stored on the actor. That is deliberate: a `pendingSounds` array on
+`ActorState` would leak into `Equatable` and would make an actor that was never ticked indistinguishable
+from one whose sounds were never drained.
+
+#### Where the sounds come from
+
+| Producer | Channel | Note |
+|---|---|---|
+| `TAP` opcode | `ActorEffect.tap(p1)` -> `.sound` | `p1`: 1 footsteps, 2 soft bump, 3 hard bump |
+| `Combat.engarde` / `turnengarde` | `.unsheatheSword` | not a `strike` — drawing and swinging differ |
+| `Combat.strike` / `stab` | `.stabAir`, `.stabOpponent`, `.swordClash` | `checkFight` decides which lands |
+| `FallCycle.land` | soft / medium / `freeFallLand` / spiked | by `fallingBlocks` and the landing tile |
+| `Fighter.updateFallingBlocks` | `.fallingFloorLands` | exactly at five floors, kid only |
+| `Button.push` | `.floorButton` | via `World.floorButtonSound(at:)`, not the armed/stuck kind |
+| `LevelState.update()` | returns `[SoundEffect]` | gates, exit doors and loose boards, in one pass |
+
+Mechanisms are the interesting case. They are not actors, so they do not go through the opcode path.
+`Gate.update()`, `ExitDoor.update()` and `LooseBoard.update()` each return `SoundEffect?`, `Trob.update()`
+forwards it, and `LevelState.update()` collects the whole tick's worth into an array that `World`
+appends to the effect list. One pass, no second traversal, and the sound is produced by the same call
+that moves the sprite — which is what makes it impossible for the two to drift apart.
+
+#### Three things the reference gets away with that a port cannot
+
+1. **`Loose.shake` picks its variant with `Utils.random(3)`** — a non-deterministic call from inside
+   a tile update. There is no sound difference worth threading a generator through a tile for, so the
+   port always plays the first. Recorded here so it is a decision and not an oversight.
+
+2. **`Gate.update` re-plays `GateRising` on every even position.** With several gates moving at once
+   the reference genuinely does stack the sample. The port keeps the call site faithful and lets
+   `AudioPlayer` collapse it: three voices per effect, chosen least-recently-used.
+
+3. **`FallingFloorLands` is not a landing sound.** It plays in mid-air five floors down — it is the
+   Prince's own cry — and only for `charName == "kid"`. The name is a trap.
+
+#### The host end
+
+`AudioPlayer` is the only file in the project that imports AVFoundation, and it is `@MainActor`.
+Effects are decoded lazily and cached in a three-voice round-robin per effect, because `AVAudioPlayer`
+is single-shot: calling `play()` on a player that is already playing restarts it, and footsteps land
+two or three ticks apart. Music is one looping player, and `playMusic` ignores a request for the track
+already playing — the reference does the same, and levels 2 and up re-issue the Danger cue.
+
+**A missing or corrupt file disables that one effect and logs once.** Audio is presentation (Law 8);
+an asset problem must never be able to stop the game running. `--mute` and `--no-audio` are launch
+flags, and `--trace` prints each tick's sounds by filename, never positionally.
+
+`Game.update` plays the Danger theme once, on level 1, 800 ms in, and only if the map's
+`prince.danger` is not `false`. The other Danger cues in the reference belong to the shadow
+encounters on levels 5 and 6, which are not ported.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1220,6 +1293,12 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M8b | Sound reaches the host as `ActorEffect.sound`, not as a callback from the model | The reference plays sound by global side effect; the effect channel keeps `PoPCore` free of AVFoundation (Law 5) and a headless test silent |
+| M8b | The effects sink is an explicit `inout` parameter, not a `pendingSounds` array on `ActorState` | A field would leak into `Equatable` and would make "never ticked" indistinguishable from "no sounds" |
+| M8b | `Gate`/`ExitDoor`/`LooseBoard.update()` return `SoundEffect?` | The sound is produced by the same call that moves the sprite, so the two cannot drift apart |
+| M8b | `AVAudioPlayer` with three voices per effect, not `AVAudioEngine` | The bank is mp3 and the overlap is bounded at three; an engine is a mixing graph for a problem that does not exist here |
+| M8b | `Loose.shake` always plays the first of the three shake variants | The reference picks with `Utils.random(3)`; the three are the same shake at different trims, and a generator in a tile update is not worth the cosmetic difference |
+| M8b | A failed asset disables one effect and logs once | Audio is presentation (Law 8); it must never be able to stop the game running |
 | M8 | The clock counts simulated ticks rather than reading a wall clock | Identical under a fixed timestep, but no drift on dropped frames and reproducible from a seed |
 | M8 | Text layout lives in `PoPCore`; the host only draws positioned glyphs | Same split as sprite rendering — the host has nothing to measure |
 | M6c | Level chaining lives in `PoPHost`, the trigger in `PoPCore` | The simulation emits an effect; only the host knows levels are numbered |

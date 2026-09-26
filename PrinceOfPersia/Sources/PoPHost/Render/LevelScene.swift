@@ -47,7 +47,18 @@ public final class LevelScene: SKScene {
     /// does not know what a "next level" is.
     public var onLevelFinished: ((_ completedLevel: Int, _ health: Int, _ maxHealth: Int) -> Void)?
 
+    /// Every sound the simulation produced this tick, in order. The coordinator plays them.
+    ///
+    /// The scene deliberately does not hold an audio player: Law 8 makes presentation
+    /// disposable, and a scene that owns speakers is a scene that cannot be built in a test.
+    public var onSound: ((SoundEffect) -> Void)?
+
+    /// Fires once, the first time a level's opening cue should play. Levels 2 and up re-use the
+    /// Danger theme, so the coordinator needs to know that a level *started*, not just which one.
+    public var onLevelStarted: ((_ level: Int, _ danger: Bool) -> Void)?
+
     private var hasReportedFinish = false
+    private var hasReportedStart = false
 
     public init(
         level: LevelRuntime,
@@ -144,6 +155,18 @@ public final class LevelScene: SKScene {
             hasReportedFinish = true
             let prince = simulation.world.prince
             onLevelFinished?(simulation.world.level.data.number, prince.health, prince.maxHealth)
+        }
+
+        // Sounds last, so anything a level-finished callback starts is not immediately buried.
+        for effect in simulation.effects {
+            if case let .sound(sound) = effect { onSound?(sound) }
+        }
+
+        // `Game.update`'s first tick: level 1 plays the Danger theme once, if the map allows it.
+        if !hasReportedStart {
+            hasReportedStart = true
+            let data = simulation.world.level.data
+            onLevelStarted?(data.number, data.prince.danger != false)
         }
     }
 

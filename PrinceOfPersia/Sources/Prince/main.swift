@@ -8,6 +8,8 @@ import PoPHost
 //   swift run Prince                      the game, at the default scale
 //   swift run Prince --scale 4            1280 x 800
 //   swift run Prince --screenshot out.png render one frame headlessly and exit
+//   swift run Prince --no-audio             run silently
+//   swift run Prince --trace --ticks 40     print the simulation, tick by tick
 //
 // The window scale is a launch option and a menu command, never a compile-time decision,
 // and nothing in PoPCore can see it.
@@ -129,6 +131,8 @@ if let frameName = value(for: "--dump-frame", in: arguments),
 
 if arguments.contains("--trace") {
     let ticks = value(for: "--ticks", in: arguments).flatMap(Int.init) ?? 30
+    var sounds: [SoundEffect] = []
+    scene.onSound = { sounds.append($0) }
     print("tick  actor        action           frame   x    y  bx by  hp  op")
     for tick in 1...ticks {
         scene.step()
@@ -141,6 +145,12 @@ if arguments.contains("--trace") {
                          tick, a.charName as NSString, a.action as NSString,
                          a.charFrame, a.charX, a.charY, a.charBlockX, a.charBlockY,
                          a.health, opponent as NSString))
+        }
+        // Sounds are labelled, never positional: a bare array in a trace invites the reader to
+        // guess which entry is which.
+        if !sounds.isEmpty {
+            print("      sound: " + sounds.map(\.fileName).joined(separator: ", "))
+            sounds.removeAll(keepingCapacity: true)
         }
     }
     fflush(stdout)
@@ -185,8 +195,14 @@ if let path = value(for: "--screenshot", in: arguments) {
 } else {
     let input = KeyboardInput()
     let view = SKView()
+    let muted = arguments.contains("--mute") || arguments.contains("--no-audio")
+    let music = !arguments.contains("--no-music") && !arguments.contains("--no-audio")
     let coordinator = try! GameCoordinator(
-        view: view, level: levelNumber, seed: seedValue, input: input
+        view: view, level: levelNumber, seed: seedValue, input: input,
+        audio: AudioPlayer(options: .init(
+            soundEnabled: !muted, musicEnabled: music,
+            volume: value(for: "--volume", in: arguments).flatMap(Float.init) ?? 1
+        ))
     )
     let controller = WindowController(
         initialScale: scale, view: view, scene: coordinator.scene

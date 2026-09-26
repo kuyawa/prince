@@ -78,7 +78,8 @@ public enum GuardBrain {
         opponent: ActorState,
         world: any TileWorld,
         strength: Int,
-        rng: inout LCG
+        rng: inout LCG,
+        effects: inout [ActorEffect]
     ) {
         guard g.isAlive, opponent.isAlive else { return }
 
@@ -97,18 +98,20 @@ public enum GuardBrain {
 
         if g.swordDrawn {
             if distance >= tooFar {
-                oppTooFar(&g, opponent: opponent, world: world, rng: &rng, strength: strength)
+                oppTooFar(&g, opponent: opponent, world: world, rng: &rng,
+                          strength: strength, effects: &effects)
             } else if distance < turnAt {
-                Combat.turnengarde(&g, opponent)
+                Combat.turnengarde(&g, opponent, effects: &effects)
             } else if distance < tooClose {
-                oppTooClose(&g, opponent: opponent, world: world)
+                oppTooClose(&g, opponent: opponent, world: world, effects: &effects)
             } else {
-                oppInRange(&g, opponent: opponent, world: world, rng: &rng, strength: strength)
+                oppInRange(&g, opponent: opponent, world: world, rng: &rng,
+                           strength: strength, effects: &effects)
             }
         } else if Combat.canReachOpponent(g, opponent, world: world, below: g.lookBelow)
                     || Combat.canSeeOpponent(g, opponent, world: world, below: g.lookBelow) {
             if !g.sneakUp || Combat.facingOpponent(g, opponent) {
-                Combat.engarde(&g, world: world)
+                Combat.engarde(&g, world: world, effects: &effects)
             }
         }
     }
@@ -142,62 +145,73 @@ public enum GuardBrain {
 
     static func oppTooFar(
         _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
-        rng: inout LCG, strength: Int
+        rng: inout LCG, strength: Int, effects: inout [ActorEffect]
     ) {
         if g.refracTimer != 0 { return }
         let distance = Combat.opponentDistance(g, opponent, world: world)
-        if opponent.action == "running", distance < 40 { return Combat.strike(&g, opponent) }
-        if opponent.action == "runjump", distance < 50 { return Combat.strike(&g, opponent) }
-        enemyAdvance(&g, opponent: opponent, world: world)
+        if opponent.action == "running", distance < 40 {
+            return Combat.strike(&g, opponent, effects: &effects)
+        }
+        if opponent.action == "runjump", distance < 50 {
+            return Combat.strike(&g, opponent, effects: &effects)
+        }
+        enemyAdvance(&g, opponent: opponent, world: world, effects: &effects)
     }
 
-    static func oppTooClose(_ g: inout ActorState, opponent: ActorState, world: any TileWorld) {
+    static func oppTooClose(
+        _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) {
         if g.charFace == opponent.charFace
             || !["engarde", "advance", "retreat"].contains(opponent.action) {
-            enemyRetreat(&g, opponent: opponent, world: world)
+            enemyRetreat(&g, opponent: opponent, world: world, effects: &effects)
         } else {
-            enemyAdvance(&g, opponent: opponent, world: world)
+            enemyAdvance(&g, opponent: opponent, world: world, effects: &effects)
         }
     }
 
     static func oppInRange(
         _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
-        rng: inout LCG, strength: Int
+        rng: inout LCG, strength: Int, effects: inout [ActorEffect]
     ) {
         let distance = Combat.opponentDistance(g, opponent, world: world)
         if !opponent.swordDrawn {
             guard g.refracTimer == 0 else { return }
-            if distance <= 25 { Combat.strike(&g, opponent) }
-            else { enemyAdvance(&g, opponent: opponent, world: world) }
+            if distance <= 25 { Combat.strike(&g, opponent, effects: &effects) }
+            else { enemyAdvance(&g, opponent: opponent, world: world, effects: &effects) }
         } else {
-            oppInRangeArmed(&g, opponent: opponent, world: world, rng: &rng, strength: strength)
+            oppInRangeArmed(&g, opponent: opponent, world: world, rng: &rng,
+                            strength: strength, effects: &effects)
         }
     }
 
     static func oppInRangeArmed(
         _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
-        rng: inout LCG, strength: Int
+        rng: inout LCG, strength: Int, effects: inout [ActorEffect]
     ) {
         guard Combat.onSameLevel(g, opponent) else { return }
         let distance = Combat.opponentDistance(g, opponent, world: world)
 
         if distance < 10 || distance >= 28 {
-            tryAdvance(&g, opponent: opponent, world: world, rng: &rng, strength: strength)
+            tryAdvance(&g, opponent: opponent, world: world, rng: &rng,
+                       strength: strength, effects: &effects)
             return
         }
 
-        tryBlock(&g, opponent: opponent, world: world, rng: &rng, strength: strength)
+        tryBlock(&g, opponent: opponent, world: world, rng: &rng,
+                 strength: strength, effects: &effects)
         guard g.refracTimer == 0 else { return }
         if distance < 12 {
-            tryAdvance(&g, opponent: opponent, world: world, rng: &rng, strength: strength)
+            tryAdvance(&g, opponent: opponent, world: world, rng: &rng,
+                       strength: strength, effects: &effects)
         } else {
-            tryStrike(&g, opponent: opponent, rng: &rng, strength: strength)
+            tryStrike(&g, opponent: opponent, rng: &rng, strength: strength, effects: &effects)
         }
     }
 
     static func tryAdvance(
         _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
-        rng: inout LCG, strength: Int
+        rng: inout LCG, strength: Int, effects: inout [ActorEffect]
     ) {
         if g.charSkill == 0 || g.strikeTimer == 0 {
             let probability = applyStrength(
@@ -206,7 +220,7 @@ public enum GuardBrain {
                 strength: strength
             )
             if probability > rng.next(upperBound: 254) {
-                enemyAdvance(&g, opponent: opponent, world: world)
+                enemyAdvance(&g, opponent: opponent, world: world, effects: &effects)
             }
         }
     }
@@ -215,7 +229,7 @@ public enum GuardBrain {
     /// visibly winding up.
     static func tryBlock(
         _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
-        rng: inout LCG, strength: Int
+        rng: inout LCG, strength: Int, effects: inout [ActorEffect]
     ) {
         guard opponent.frameID(152, 153) || opponent.frameID(162)
                 || opponent.frameID(2, 3) || opponent.frameID(12)
@@ -231,7 +245,8 @@ public enum GuardBrain {
     }
 
     static func tryStrike(
-        _ g: inout ActorState, opponent: ActorState, rng: inout LCG, strength: Int
+        _ g: inout ActorState, opponent: ActorState, rng: inout LCG, strength: Int,
+        effects: inout [ActorEffect]
     ) {
         if opponent.frameID(169) || opponent.frameID(151)
             || opponent.frameID(19) || opponent.frameID(1) { return }
@@ -241,12 +256,15 @@ public enum GuardBrain {
             table.indices.contains(g.charSkill) ? table[g.charSkill] : 0, strength: strength
         )
         if probability > rng.next(upperBound: 254) {
-            Combat.strike(&g, opponent)
+            Combat.strike(&g, opponent, effects: &effects)
         }
     }
 
     /// `Enemy.enemyAdvance` — a guard only advances onto ground it can stand on.
-    static func enemyAdvance(_ g: inout ActorState, opponent: ActorState, world: any TileWorld) {
+    static func enemyAdvance(
+        _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) {
         guard g.hasStartedFight else { return }
 
         if !Combat.canReachOpponent(g, opponent, world: world, below: g.lookBelow),
@@ -271,7 +289,10 @@ public enum GuardBrain {
     }
 
     /// `Enemy.retreat`.
-    static func enemyRetreat(_ g: inout ActorState, opponent: ActorState, world: any TileWorld) {
+    static func enemyRetreat(
+        _ g: inout ActorState, opponent: ActorState, world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) {
         guard Combat.canReachOpponent(g, opponent, world: world, below: g.lookBelow) else { return }
         guard !Behaviour.nearBarrier(g, world: world, walk: true) else { return }
 
