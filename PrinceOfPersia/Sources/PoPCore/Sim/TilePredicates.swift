@@ -59,4 +59,11 @@ public extension TileKind {
 
     /// Usable as jump clearance. Tapestry tops are space but not jump space.
     var isJumpSpace: Bool { isSpace && self != .tapestryTop }
+
+    /// Whether this tile blocks an actor's *line of sight* into the next room.
+    ///
+    /// A narrower set than `isBarrier`: a gate or a mirror blocks movement but not sight.
+    var isSeeBarrier: Bool {
+        self == .wall || self == .tapestry || self == .tapestryTop
+    }
 }

@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M7c — spikes, choppers, potions** *(or M6 combat)* |
-| **Last completed** | **M7b — loose boards and the exit door.** 163 tests pass |
+| **Current milestone** | **M6b — guards in the level** *(or M7c hazards)* |
+| **Last completed** | **M6a — sword fighting and the guard AI.** 179 tests pass |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M6 combat (guards), or M7c hazards. Both unblocked |
+| **Next action** | M6b: load `guards{}` into the world and draw them. Then M7c |
 
 ---
 
@@ -243,7 +243,36 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [ ] `checkBarrier` (M3c) — still blocks `bump`, and so the mirror branches of `jump()`
 - [ ] `floorStopFall` — the board landing and becoming debris is not modelled (visual only)
 
-### M6 — Combat and guards
+### M6 — Combat and guards *(partially complete)*
+**Done (M6a):**
+- [x] **`Combat`** — the queries (`opponentDistance`, `facingOpponent`, `canSeeOpponent`,
+      `canWalkOnNextTile`, the room-visibility helpers), the six verbs, and `checkFight`'s
+      strike resolution
+- [x] **`GuardBrain`** — the full probability tables, the distance bands, the timers, and the
+      engage/advance/retreat/block/strike decisions
+- [x] **Open question 2 CLOSED**: SDLPoP's `prandom` is the *same* LCG already ported for wall
+      patterns, so guard behaviour is now reproducible from a seed — which PrinceJS cannot do,
+      since it draws from a clock-seeded generator
+- [x] `ActorState` combat fields: health, skill, the three timers, `frameID`
+
+**Found:**
+- **`die()` zeroes the health**, and `damageLife` calls `die` at one health rather than
+  decrementing to zero. `stabbed` picks `stabkill` vs `stabbed` by testing `health === 0` after
+  the damage — so decrementing to zero makes a fatal blow look like a wound. My first version had
+  both wrong; the test was right.
+- The animation **is** the state machine: every verb is frame-gated, and a strike on any
+  non-strike frame does nothing at all.
+
+**Still open (M6b):**
+- [ ] Load `guards{}` from the level into the world; guards are not yet instantiated
+- [ ] An actor list in `World`, so combat addresses opponents by index rather than by two
+      `inout` parameters
+- [ ] Guard rendering, the sword overlay, and the colour tints
+- [ ] `checkFight`'s "turn to face" arm is wired but no guard is spawned to exercise it in game
+- [ ] `canReachOpponent` is **simplified** — the reference walks a tile path measured from
+      `centerX` (open question 11)
+
+### M6 — Combat and guards *(original scope)*
 - [ ] `Guard` with skill tables from `Enemy.js` — transcribe all twelve columns verbatim
 - [ ] `applyStrength` scaling; guard health formula; colour tinting
 - [ ] `Swordfight`: distance thresholds `minHurtDistance`/`maxHurtDistance`, frame-ID gates

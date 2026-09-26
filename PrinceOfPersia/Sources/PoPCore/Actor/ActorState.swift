@@ -78,6 +78,36 @@ public struct ActorState: Sendable, Equatable {
     public var isAlive: Bool
     public var swordDrawn: Bool
 
+    // MARK: - Combat
+
+    /// Set on the *opponent* when their strike is parried. Read on the next tick, which turns it
+    /// into a retreat.
+    public var blocked: Bool
+
+    /// Health in sword strikes. The Prince starts at 3; guards get theirs from the level.
+    public var health: Int
+    public var maxHealth: Int
+
+    /// The sprite family without the colour suffix — `"guard"` where `charName` is `"guard-3"`.
+    /// `checkFight` reads it to give a fat guard two extra pixels of reach.
+    public var baseCharName: String
+
+    /// Index into the guard difficulty tables, 0...11.
+    public var charSkill: Int
+
+    /// The three per-guard cooldowns, in ticks.
+    public var refracTimer: Int
+    public var blockTimer: Int
+    public var strikeTimer: Int
+
+    /// Whether the guard has noticed the Prince yet. A fight starts once it does.
+    public var isActive: Bool
+    public var isVisible: Bool
+    /// Read by the guard AI to look one row down for the Prince.
+    public var lookBelow: Bool
+    public var hasStartedFight: Bool
+    public var sneakUp: Bool
+
     /// Read by `IFWTLESS` (247) to choose a floating variant of the current action.
     public var isInFloat: Bool
 
@@ -178,6 +208,20 @@ public struct ActorState: Sendable, Equatable {
         self.actionCode = 1
         self.isAlive = true
         self.swordDrawn = false
+        self.blocked = false
+
+        self.health = 3
+        self.maxHealth = 3
+        self.baseCharName = charName
+        self.charSkill = 0
+        self.refracTimer = 0
+        self.blockTimer = 0
+        self.strikeTimer = 0
+        self.isActive = true
+        self.isVisible = true
+        self.lookBelow = false
+        self.hasStartedFight = true
+        self.sneakUp = true
         self.isInFloat = false
         self.isInFallDown = false
         self.checkFloorStepFall = false
@@ -211,6 +255,16 @@ public struct ActorState: Sendable, Equatable {
     public mutating func beginAction(_ name: String) {
         action = name
         sequencePointer = 0
+    }
+
+    /// `Actor.frameID` — is the current frame this one, or within this range?
+    ///
+    /// Almost every combat verb is gated on it: a strike is only legal on frames 157–158, a step
+    /// only on 8, and so on. The animation *is* the state machine.
+    public func frameID(_ from: Int) -> Bool { charFrame == from }
+
+    public func frameID(_ from: Int, _ to: Int) -> Bool {
+        charFrame >= from && charFrame <= to
     }
 
     /// `Actor.updateCharFrame` — unpack the frame definition's `fcheck`.

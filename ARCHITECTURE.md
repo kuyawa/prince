@@ -150,7 +150,8 @@ Prince/                              ← workspace root
     │   │   │                        ✅ M2 — Opcode, ActorClass, SequenceInterpreter (the VM)
     │   │   ├── Actor/               ✅ M2 — ActorState, ActorEffect
     │   │   │                        ✅ M3b — Intents, Behaviour (the control layer)
-    │   │   │                           ⬜ M6 — Fighter, Prince, Guard, combat verbs
+    │   │   │                        ✅ M6 — Combat, GuardBrain
+    │   │   │                           ⬜ M6b — guards loaded from the level and drawn
     │   │   ├── Sim/                 ✅ M3 — LevelRuntime, TilePredicates, Physics, FallCycle,
     │   │   │                           LCG, Ticker
     │   │   │                        ✅ M5 — cross-room tile lookup, room wrapping
@@ -806,6 +807,54 @@ is missing, and only in rooms containing a mirror.
 Spikes, choppers and potions use the same `Trob` shape and are the remaining M7 work.
 `STUCK_BUTTON` is modelled but unused — M1 found the original levels never place one.
 
+### 7.9.3 Sword fighting
+
+#### The animation *is* the state machine
+
+Every combat verb is gated on `frameID`. A strike is legal only on frames 157–158, 165, 170–171,
+7–8, 20–21 or 15; a step only on 158, 171, 8 or 20–21; a block only on 8, 20–21, 18 or 15.
+Pressing the key on any other frame does nothing at all.
+
+That is why combat feels deliberate rather than mashable, and it is the single most important
+thing to preserve. **Nothing about it is timing-independent**, so "responsiveness" improvements
+would silently change the game.
+
+#### `die` zeroes the health
+
+```js
+Fighter.prototype.die = function (action) {
+  let damage = this.health;
+  this.health -= damage;          // -> 0
+  this.action = action || "dropdead";
+  this.alive = false;
+};
+```
+
+and `damageLife` calls `die` at **one** health rather than decrementing to zero. Both matter,
+because `stabbed` picks between `stabkill` and `stabbed` by testing `health === 0` *after* the
+damage has been applied. Modelled as `health -= 1` down to zero, a fatal blow is
+indistinguishable from a wound.
+
+#### The guard's mind
+
+Every choice is a fixed threshold against a random number:
+
+```js
+if (this.strikeProbability > this.game.rnd.between(0, 254)) { this.strike(); }
+```
+
+The twelve columns of those tables are the twelve difficulty levels the level editor exposes, and
+the values are hand-tuned. They are transcribed verbatim in `GuardBrain`; **there is nothing here
+to improve.** `applyStrength` scales them by the player's chosen difficulty, using `ceil`.
+
+Guard health is `EXTRA_STRENGTH[skill] + STRENGTH[levelNumber]` — note the second table is
+indexed by **level**, not skill, which is easy to get backwards.
+
+**Omitted:** `canReachOpponent` is simplified to a distance test. The reference walks a tile path
+between the fighters measured from `centerX` — the same Phaser sprite geometry `checkBarrier`
+still owes (open question 11). A guard may therefore engage through a thin barrier the original
+would have stopped at.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -951,8 +1000,16 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
 ## 10. Open questions
 
 1. **Combat tick rate** — global 1/10 s switch, or per-actor? Verify in `SDLPoP/src/seg000.c`.
-2. **Gameplay RNG** — adopt SDLPoP's seedable RNG (reproducible replays) or mirror PrinceJS's
-   partial `Math.random()`? Recommendation: adopt SDLPoP's.
+2. ~~**Gameplay RNG**~~ — **RESOLVED, and it cost nothing.** SDLPoP's `prandom` is:
+   ```c
+   word prandom(word max) {
+     random_seed = random_seed * 214013 + 2531011;
+     return (random_seed >> 16) % (max + 1);
+   }
+   ```
+   — **the same MSVC linear congruential generator already ported in M3** for wall patterns. The
+   guard AI now draws from it, so fights are reproducible from a seed. PrinceJS cannot do this:
+   its guard decisions come from Phaser's `rnd`, seeded from the clock.
 3. ~~**Coordinate representation**~~ — **RESOLVED in M2.** `Int` throughout, in the engine's
    own units: `charX` in x-units (140/room), `charY` in pixels (189/room). The `+0.5` is
    render-only. See §7.4.
@@ -1045,6 +1102,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M6 | Guard AI uses the LCG already ported for wall patterns | SDLPoP's `prandom` is the same generator; PrinceJS's is clock-seeded and not replayable |
+| M6 | `damageLife` calls `die` at one health rather than reaching zero | The reference picks `stabkill` vs `stabbed` by testing `health === 0` after damage |
+| M6 | Combat verbs stay frame-gated, with no responsiveness smoothing | The animation is the state machine; loosening it would change how the game plays |
 | M7b | A collapsing board is modelled as a `TILE_SPACE` override | That is literally what `floorStartFall` does; nothing special-cases the Prince falling |
 | M7b | `ExitDoor` tracks `visibleHeight` rather than Phaser's crop bookkeeping | The reference's terminator works only via a rendering library's side effect; the intent is unambiguous |
 | M7b | Behaviour gained an effects channel, with the old signature kept | Climbing past a board and revealing an exit door change the world, and reaching into the level from Behaviour would break the layering |
