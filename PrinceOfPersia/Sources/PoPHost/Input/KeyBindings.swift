@@ -70,11 +70,7 @@ public struct KeyBindings: Sendable, Equatable, Codable {
     /// `Application Support`, not the bundle: a `.app` is code-signed and read-only, and the
     /// whole point of the file is that it can be edited.
     public static var fileURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base
-            .appendingPathComponent("PrinceOfPersia", isDirectory: true)
-            .appendingPathComponent("keys.json")
+        AppSupport.directory.appendingPathComponent("keys.json")
     }
 
     /// Reads the player’s bindings, falling back to the standard set.
@@ -100,14 +96,7 @@ public struct KeyBindings: Sendable, Equatable, Codable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(bindings) else { return false }
-        do {
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try data.write(to: url)
-            return true
-        } catch {
-            return false
-        }
+        AppSupport.createDirectory(at: url.deletingLastPathComponent())
+        return (try? data.write(to: url)) != nil
     }
 }

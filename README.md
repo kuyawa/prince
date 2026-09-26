@@ -88,6 +88,33 @@ and that does not count: let go and press again.
 A restart is a full reload — full health, the boards whole, the gates shut, every guard back
 where the level put him. That is the run starting over, which is not the same as reaching a new
 level: finishing one carries your health forward.
+
+### Resuming where you left off
+
+**Quit and come back, and you start on the level you were on.** It is loaded from the top —
+full health, a fresh hourglass, the level as the designer built it — which is the same thing
+dying does. Nothing about a half-finished level is kept.
+
+| | |
+|---|---|
+| **⌘ N** | New Game — forget the save and start at level 1 |
+| `--new-game` | The same thing from the command line |
+| `--level N` | Start on a specific level, whatever the save says |
+
+The save is a single number:
+
+```
+~/Library/Application Support/PrinceOfPersia/progress.json
+```
+
+Delete it to start over. It is ignored if it is missing, unreadable, or names a level that does
+not exist — the game will not refuse to start because of a bad save file.
+
+> **This is an addition, not a port.** Neither the 1989 original nor PrinceJS saves anything:
+> `Boot.js` hardcodes level 1, and the game was designed to be played in one sitting against a
+> sixty-minute hourglass. Resuming is a modern convenience bolted onto a 1989 game, and it is
+> the one place this port knowingly departs from the original. `--new-game` is there for anyone
+> who would rather have it as it was.
 Note the two sequences you will press by accident:
 
 * **↑ + ←/→** is a standing jump; **↑ alone** jumps straight up, and becomes
@@ -117,6 +144,8 @@ and then rejected. Integer multiples only: a fractional scale would land the
 
 | Shortcut | Does |
 |---|---|
+| **⌘ N** | New Game — start over from level 1 |
+| **⌘ R** | Restart the current level |
 | **⌘ W** | Close the window — which **quits the game**, since there is only one |
 | **⌘ M** | Minimise |
 | **⌘ K** | Open your key bindings in the default editor |
@@ -181,7 +210,8 @@ swift run Prince --no-audio                   # silent
 | Flag | Does |
 |---|---|
 | `--scale N` | Window scale, 1–8, capped to the display |
-| `--level N` | Start on level 1–14 |
+| `--level N` | Start on level 1–14, whatever the save says |
+| `--new-game` | Forget the save and start at level 1 |
 | `--room N` | Start in a specific room |
 | `--location N` | Start at a specific tile (`y * 10 + x`) |
 | `--seed N` | Seed the RNG, so a run is reproducible |

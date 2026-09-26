@@ -28,6 +28,20 @@ public enum MainMenu {
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
+        // Game menu — the two things a player reaches for that are not the arrow keys.
+        let gameItem = NSMenuItem()
+        let gameMenu = NSMenu(title: "Game")
+        gameMenu.addItem(withTitle: "New Game (from Level 1)",
+                         action: #selector(WindowController.startNewGame(_:)),
+                         keyEquivalent: "n")
+        gameMenu.items.last?.target = controller
+        gameMenu.addItem(withTitle: "Restart Level",
+                         action: #selector(WindowController.restartLevel(_:)),
+                         keyEquivalent: "r")
+        gameMenu.items.last?.target = controller
+        gameItem.submenu = gameMenu
+        mainMenu.addItem(gameItem)
+
         // Options menu — where the key bindings live.
         let optionsItem = NSMenuItem()
         let optionsMenu = NSMenu(title: "Options")

@@ -77,7 +77,13 @@ func intents(named name: String) -> Intents {
 
 let arguments = CommandLine.arguments
 let scale = WindowScale.scale(from: arguments)
-let levelNumber = value(for: "--level", in: arguments).flatMap(Int.init) ?? 1
+
+// Where to start. An explicit --level wins, then the save, then the beginning — so quitting on
+// level 7 and relaunching comes back to level 7. --new-game throws the save away.
+let levelNumber = Progress.startingLevel(
+    requested: value(for: "--level", in: arguments).flatMap(Int.init),
+    newGame: arguments.contains("--new-game")
+)
 
 // A screenshot holds one direction for the whole run so the frame is reproducible.
 let hold: Intents? = value(for: "--hold", in: arguments).map(intents(named:))
@@ -231,6 +237,7 @@ if let path = value(for: "--screenshot", in: arguments) {
     let controller = WindowController(
         initialScale: scale, view: view, scene: coordinator.scene
     )
+    controller.coordinator = coordinator
     app.mainMenu = MainMenu.build(controller: controller)
     controller.showWindow(nil)
     app.activate(ignoringOtherApps: true)

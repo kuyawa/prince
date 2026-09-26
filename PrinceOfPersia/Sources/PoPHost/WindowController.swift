@@ -67,6 +67,20 @@ public final class WindowController: NSWindowController {
         setScale(sender.tag)
     }
 
+    // MARK: - Game
+
+    /// Set by whoever built the window, so the menu can reach the run. Weak: the coordinator
+    /// owns the view this controller holds, and a strong reference here would be a cycle.
+    public weak var coordinator: GameCoordinator?
+
+    @objc public func startNewGame(_ sender: Any?) {
+        coordinator?.startNewGame()
+    }
+
+    @objc public func restartLevel(_ sender: Any?) {
+        coordinator?.restartCurrentLevel()
+    }
+
     // MARK: - Key bindings
 
     /// Opens the bindings file in whichever editor owns JSON.

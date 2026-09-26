@@ -50,6 +50,9 @@ public final class GameCoordinator {
             level: level, seed: seed, input: input, health: nil, maxHealth: nil
         )
         wire()
+        Progress.save(level: level)
+        print("[Prince] level \(level)  seed \(seed)")
+        fflush(stdout)
     }
 
     private static func makeScene(
@@ -101,6 +104,37 @@ public final class GameCoordinator {
     /// Presents the level and hands the scene back to the caller to put in a window.
     public func present() {
         view.presentScene(scene)
+    }
+
+    /// Starts the run over at level 1 and forgets the save, so quitting now resumes at the
+    /// beginning rather than dropping the player back into level 12.
+    public func startNewGame() {
+        Progress.save(level: GameData.levelNumbers.lowerBound)
+        load(level: GameData.levelNumbers.lowerBound)
+    }
+
+    /// Reloads the current level, leaving the save where it is.
+    public func restartCurrentLevel() {
+        load(level: levelNumber)
+    }
+
+    /// Builds a level and presents it, replacing whatever was there.
+    private func load(level: Int) {
+        audio.stopMusic()
+        audio.flush()
+        do {
+            let replacement = try GameCoordinator.makeScene(
+                level: level, seed: seed, input: input, health: nil, maxHealth: nil
+            )
+            scene = replacement
+            levelNumber = level
+            wire()
+            view.presentScene(replacement, transition: SKTransition.fade(withDuration: 0.4))
+        } catch {
+            FileHandle.standardError.write(
+                Data("Could not load level \(level): \(error)\n".utf8)
+            )
+        }
     }
 
     /// The Prince died and the death wait is over: **reload the level from the top.**
@@ -158,6 +192,8 @@ public final class GameCoordinator {
             scene = nextScene
             levelNumber = next
             wire()
+            // The save is the level to come *back* to, so it moves as the run does.
+            Progress.save(level: next)
             view.presentScene(nextScene, transition: SKTransition.fade(withDuration: 0.6))
             print("[Prince] level \(completed) complete -> level \(next)"
                   + "  health \(health)/\(maxHealth)")

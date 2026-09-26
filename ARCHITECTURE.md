@@ -1520,6 +1520,44 @@ Ten ticks of pause, then 260 of countdown, at 1/12 s each: about 22 seconds from
 automatic restart, with the message appearing 4 s in. The countdown counts down *through* those
 four seconds rather than starting after them — `Interface`’s separate timer only drives the flash,
 and the reference having two timers that do almost the same thing is not reproduced.
+### 7.17 Resuming, and the one place this port departs from the original
+
+**Neither the 1989 game nor PrinceJS saves anything.** `Boot.js` hardcodes
+`PrinceJS.currentLevel = 1`, there is no `localStorage`, and the game was designed around a
+sixty-minute hourglass that you either beat or did not. A save is a modern affordance, and it is
+the only feature in this port that the original does not have.
+
+It is here because fourteen levels is a long sitting, it is recorded as an addition rather than
+presented as fidelity, and `--new-game` is there for anyone who would rather have it as it was.
+
+#### What it remembers, and what it deliberately does not
+
+One number: the level. Resuming loads that level **from the top** — full health, a fresh hourglass,
+the boards whole and the gates shut — which is exactly what dying does.
+
+Not the health, and not the world. Two reasons, and the second is the real one. Serialising the
+world would mean persisting every board, gate, actor and timer, which is a great deal of machinery
+for a game that can reload a level in a few milliseconds. But it would also let a player bank a
+lucky position — three health and a guard already dead — and the whole design is that a mistake
+costs you the level. Resuming at the top is the version of the feature that does not change what
+the game is about.
+
+#### Failing safely
+
+`Progress.load` never throws and never returns nonsense. A missing file, an unreadable one, a typo
+in the JSON, or a level number that does not exist all mean the same thing to the caller: start at
+the beginning. The file is JSON in Application Support, which is to say it is a file people will
+edit, and a game that refuses to launch because of a bad save file is worse than one that forgets.
+
+#### Where it is written
+
+Alongside the key bindings, in `~/Library/Application Support/PrinceOfPersia/`, through a shared
+`AppSupport` helper. `Progress.save` is called when a level is *presented* — at launch, on a level
+change, and on a new game — so the save always names the level to come back to.
+
+The precedence is: an explicit `--level`, then the save, then the beginning. An explicit level
+winning matters more than it looks: every screenshot and trace command in the README passes one,
+and a diagnostic that silently resumed somewhere else would be useless.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1919,6 +1957,8 @@ Where to look when you have a question. Keep this table current.
 | M6d | The medium landing calls `damageLife`, not a bare `health -= 1` | `damageLife` calls `die` at one health; the inlined version left a Prince at zero health and alive |
 | M6d | `timeUp` ends the run rather than going to level 16 | Level 16 is a cutscene, and cutscenes are not ported. The effect and the handling are both real; only the destination differs |
 | — | The artwork faces left, so facing *right* is the mirrored case | `Actor`’s constructor does `scale.x *= -charFace`. The port had it inverted, which read as the Prince walking backwards in both directions |
+| — | The port remembers the level and resumes there; nothing in the reference does | The only feature here the original does not have, recorded as an addition rather than as fidelity. `--new-game` restores the original behaviour |
+| — | Resuming saves the level only, never health or the world | Serialising the world would let a player bank a lucky position, and the design is that a mistake costs you the level |
 | — | Dying restarts the level on a key *press*, taken as the rising edge of the input | The reference listens on a key-down callback; `Intents` is a held state, so a literal copy would restart the level the instant a running player died |
 | — | A restart is a full reload, and does not carry health | `Game.reset` rebuilds the level. Carrying health is what a *level change* does, and dying is not progress |
 | Ledge | `tryGrabEdge` is two probes, front (reach 30) then overhead (reach 20) | The second catches a Prince who has drifted past the edge and is falling down its face |
