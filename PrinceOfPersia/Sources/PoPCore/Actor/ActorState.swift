@@ -125,8 +125,16 @@ public struct ActorState: Sendable, Equatable {
     /// `Kid.pickupPotion` — likewise.
     public var pickupPotion: Bool
 
-    /// Set by `checkFloor`'s fall branch. Used by `checkBarrier` (remaining M3 work).
+    /// Set by `checkFloor`'s fall branch, and by `bumpFall`.
     public var isInFallDown: Bool
+
+    /// `Kid.bumpTimer` — keeps a Prince grinding against a wall from playing the bump sound every
+    /// single tick. Set to 10 on a bump, decremented in `updateTimer`.
+    public var bumpTimer: Int
+
+    /// `Kid.backwardsFall` — which way a bumped actor is pushed. `startFall` sets it to -1 with the
+    /// sword out, so a fighting Prince is knocked *forward* instead of back.
+    public var backwardsFall: Int
 
     /// Set by `startFall` for the actions that need an immediate floor probe, and consumed by
     /// `checkFloor`'s falling branch.
@@ -212,6 +220,8 @@ public struct ActorState: Sendable, Equatable {
         self.charFood = false
         self.charFcheck = false
         self.charFthin = false
+        self.bumpTimer = 0
+        self.backwardsFall = 1
         self.floatTicksRemaining = 0
         self.pickupSword = false
         self.pickupPotion = false

@@ -198,6 +198,8 @@ public struct World: Sendable {
 }
 
 extension World: TileWorld {
+    public var atlasName: String { level.atlasName }
+
     public func tile(x: Int, y: Int, room: Int) -> Tile {
         // A board that has fallen is a hole in the floor from now on.
         if let ref = level.resolve(x: x, y: y, room: room),

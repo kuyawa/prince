@@ -62,7 +62,7 @@ private func run(_ state: ActorState, script: [Intents]) throws -> [RoomTick] {
     var effects: [ActorEffect] = []
     var result: [RoomTick] = []
     for intents in script {
-        Behaviour.update(&state, intents: intents, world: level)
+        driveBehaviour(&state, intents: intents, world: level)
         try interpreter.step(&state, world: level, effects: &effects)
         result.append(RoomTick(state))
     }

@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M3c — barriers and ledges** *(SpriteMetrics now unblocks `checkBarrier`)* |
-| **Last completed** | **M7c-2 — choppers.** 277 tests pass |
-| **Blocked on** | nothing. All seven hazards are in |
-| **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M3c `checkBarrier`, or the M6d presentation leftovers |
+| **Current milestone** | **M6d — the presentation leftovers, or the ledge system** |
+| **Last completed** | **M3c — `checkBarrier` and the bump.** 287 tests pass. **Open question 11 is closed** |
+| **Blocked on** | nothing |
+| **Open questions** | 8, listed in `ARCHITECTURE.md` §10 |
+| **Next action** | Ledges (`tryGrabEdge`, `checkLedgeSwing`, `jumphang*`) — everything they need now exists. Or the M6d leftovers: time-up, death splash, shadow overlay |
 
 ---
 
@@ -397,11 +397,40 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - The reference plays only **one** cue on a level's first tick (level 1's Danger). The other two
   Danger calls belong to the shadow encounters on levels 5 and 6, which are not ported.
 
+**Done (M3c):**
+- [x] **`ScreenRect`** — `Phaser.Rectangle.intersects` transcribed, including the two things that
+      are easy to read backwards: an empty rectangle never intersects, and edge-touching rectangles
+      **do**
+- [x] **`checkBarrier`** — all four branches: the freefall into a two-tile barrier, walking into a
+      barrier, the column-ahead probe, and the mirror from behind
+- [x] **`bump` / `setBump` / `bumpSound` / `bumpFall`** and `alignToFloor`
+- [x] **`Behaviour.step`’s** chopper, mirror and gate branches, which trim `px` rather than clamping
+      it to zero
+- [x] `Behaviour.update` takes the interpreter, because a verb *may* end the tick with
+      `processCommand`
+- [x] **Open question 11 closed** — see `ARCHITECTURE.md` §7.9.10
+
+**Found:**
+- **The question was wrong, not just unanswered.** Open question 11 assumed there was an engine-unit
+  equivalent to find. There is not, because `checkBarrier` is not physics — it is screen-space
+  collision over cel sizes, and the cels are in the atlas JSON. Once `SpriteMetrics` existed the
+  answer was to transcribe, `roomX * 32 + 40` and all.
+- **`Tile.Base.getBounds` and `getBoundsAbs` disagree on purpose.** One is a 4-pixel strip forty
+  pixels into the cell — eight past the cell’s end. The other is the full cel at the tile origin,
+  overhang included. `checkBarrier` asks for both.
+- **`Phaser.Rectangle.intersects` counts edge-touching as intersecting.** The separation tests are
+  strict, so an equal `right` and `x` is *not* separated. My first test asserted the opposite; the
+  code was right.
+- **`Kid.bumpSound` is rate-limited by `bumpTimer`.** Without it, a Prince held against a wall plays
+  the thud every tick, which is a buzz rather than a bump.
+
 **Still open (M6d):**
 - [ ] The **time-up** hand-off: `timeUp` is detected but the host does not yet end the run
 - [ ] The dying animation's splash sprite, and the shadow overlay
-- [ ] `canReachOpponent` is **simplified** — the reference walks a tile path measured from
-      `centerX` (open question 11)
+- [ ] **`canReachOpponent` is still simplified** — it keeps a distance test where the reference
+      walks a tile path from `centerX` via `checkPathToOpponent`. Now *unblocked* by `SpriteMetrics`,
+      so a guard can still engage through a thin barrier that the original would have stopped at
+- [ ] **Ledges** — `tryGrabEdge`, `checkLedgeSwing`, `jumphang*`. Everything they need now exists
 
 ### M6 — Combat and guards *(original scope)*
 - [ ] `Guard` with skill tables from `Enemy.js` — transcribe all twelve columns verbatim

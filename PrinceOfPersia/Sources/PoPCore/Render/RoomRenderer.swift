@@ -20,7 +20,7 @@ public enum RoomRenderer {
     public static let tileForegroundDetailZ = 31
 
     /// Tile sprites overhang their grid cell by this much. `addTile`: `y * BLOCK_HEIGHT - 13`.
-    public static let tileOverhang = 13
+    public static let tileOverhang = Geometry.tileOverhang
 
     public static func describe(
         world: World,

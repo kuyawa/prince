@@ -29,22 +29,18 @@ public enum Behaviour {
     ///
     /// A verb that needs to change the world — climbing past a loose board, revealing an exit
     /// door — records it as an effect instead of reaching into the level.
-    public static func update(
-        _ state: inout ActorState,
-        intents: Intents,
-        world: any TileWorld
-    ) {
-        var ignored: [ActorEffect] = []
-        update(&state, intents: intents, world: world, effects: &ignored)
-    }
-
     /// `Kid.updateBehaviour`.
+    ///
+    /// The interpreter is here because two verbs — `step` against a mirror, and `step` into a
+    /// gate — call `setBump`, and `setBump` ends the tick with `processCommand`. That is the
+    /// reference’s own shape: a behaviour verb may run the sequence, it just does not *have* to.
     public static func update(
         _ state: inout ActorState,
         intents: Intents,
         world: any TileWorld,
+        interpreter: SequenceInterpreter,
         effects: inout [ActorEffect]
-    ) {
+    ) throws {
         // The reference bails out before the actor has a position.
         if state.charX == 0 && state.charY == 0 { return }
 
@@ -80,16 +76,16 @@ public enum Behaviour {
                 return standjump(&state)
             }
             if intents.contains(.left), intents.contains(.action), state.charFace == -1 {
-                return step(&state, world: world)
+                return try step(&state, world: world, interpreter: interpreter, effects: &effects)
             }
             if intents.contains(.right), intents.contains(.action), state.charFace == 1 {
-                return step(&state, world: world)
+                return try step(&state, world: world, interpreter: interpreter, effects: &effects)
             }
             if intents.contains(.left), state.charFace == -1 {
-                return startrun(&state, world: world)
+                return try startrun(&state, world: world, interpreter: interpreter, effects: &effects)
             }
             if intents.contains(.right), state.charFace == 1 {
-                return startrun(&state, world: world)
+                return try startrun(&state, world: world, interpreter: interpreter, effects: &effects)
             }
             if intents.contains(.up) { return jump(&state, world: world, effects: &effects) }
             if intents.contains(.down) { return stoop(&state, world: world) }
@@ -124,10 +120,10 @@ public enum Behaviour {
             state.blockEngarde = false
             state.charRepeat = false
             if intents.contains(.left), state.charFace == -1, state.charFrame == 48 {
-                return turnrun(&state, world: world)
+                return try turnrun(&state, world: world, interpreter: interpreter, effects: &effects)
             }
             if intents.contains(.right), state.charFace == 1, state.charFrame == 48 {
-                return turnrun(&state, world: world)
+                return try turnrun(&state, world: world, interpreter: interpreter, effects: &effects)
             }
 
         case "stoop":
@@ -211,8 +207,17 @@ public enum Behaviour {
     }
 
     /// `Kid.startrun` — walking into a wall becomes a step instead.
-    public static func startrun(_ state: inout ActorState, world: any TileWorld) {
-        if nearBarrier(state, world: world) { return step(&state, world: world) }
+    public static func startrun(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
+        if nearBarrier(state, world: world) {
+            return try step(
+                &state, world: world, interpreter: interpreter, effects: &effects
+            )
+        }
         state.beginAction("startrun")
     }
 
@@ -220,9 +225,14 @@ public enum Behaviour {
         state.beginAction("runturn")
     }
 
-    public static func turnrun(_ state: inout ActorState, world: any TileWorld) {
+    public static func turnrun(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
         if nearBarrier(state, world: world) {
-            step(&state, world: world)
+            try step(&state, world: world, interpreter: interpreter, effects: &effects)
             state.charX -= 2 * state.charFace
             return
         }
@@ -545,26 +555,62 @@ public enum Behaviour {
     /// is the whole point of this verb: the Prince's final position at a ledge depends on
     /// which of the fourteen he is running.
     ///
-    /// **Omitted:** the CHOPPER and MIRROR branches, which trim `px` using `distanceToEdge`
-    /// against the blade or the mirror, and the `setBump`/`bump` calls that stop the step
-    /// outright. Both need `checkBarrier`'s bounds geometry. Where the reference would
-    /// bump, this clamps `px` to a minimum of zero — the actor stops short rather than
-    /// being pushed back. Behaviour is identical in rooms without choppers or mirrors.
-    public static func step(_ state: inout ActorState, world: any TileWorld) {
+    /// Four branches, and which one runs decides whether a step is a step, a bump, or merely a
+    /// test of the ground. The chopper and mirror cases *trim* `px` rather than stopping him: a
+    /// Prince may walk right up to the blades, but no further, and the difference between `px` and
+    /// 11 is the whole point of this verb.
+    public static func step(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
         var px = 11
 
-        let tileF = world.tile(
-            x: state.charBlockX + state.charFace, y: state.charBlockY, room: state.room
-        )
+        let x = state.charBlockX, y = state.charBlockY, room = state.room
+        let tile = world.tile(x: x, y: y, room: room)
+        let tileF = world.tile(x: x + state.charFace, y: y, room: room)
 
-        if nearBarrier(state, world: world)
+        if (tile.kind == .chopper && state.charFace == -1)
+            || (tileF.kind == .chopper && state.charFace == 1) {
+            // Stops one unit short of the blades — and if there is no room at all he steps the
+            // full eleven rather than freezing, which is what keeps him from sticking to a blade
+            // he is already standing under.
+            px = distanceToEdge(state) - 4 - (state.charFace == -1 ? 1 : 0)
+            if px <= 0 { px = 11 }
+        } else if (tile.kind == .mirror && state.charFace == -1)
+            || (tileF.kind == .mirror && state.charFace == 1) {
+            // A mirror stops him eight units out, and at that point he is bumped instead.
+            px = distanceToEdge(state) - 8
+            if px <= 0 {
+                try Barrier.bump(
+                    &state, world: world, interpreter: interpreter, effects: &effects
+                )
+                return
+            }
+        } else if nearBarrier(state, world: world)
             || [.space, .topBigPillar, .tapestryTop, .potion,
                 .looseBoard, .dropButton, .raiseButton, .sword].contains(tileF.kind) {
             px = distanceToEdge(state)
 
-            if tileF.kind.isBarrier, px - 2 <= 0 {
-                // `setBump` is the bump mechanic, which needs `checkBarrier`. Stop short.
-                px = max(px, 0)
+            // A gate that is slamming shut or already too low to duck under, and a tapestry,
+            // stop him six units earlier — but only walking right.
+            let gate = world.trob(x: x, y: y, room: room)?.gate
+            let gateBlocks = tile.kind == .gate
+                && (gate?.phase == .fastDropping || gate?.canCross(height: 30) == false)
+            if gateBlocks || tile.kind == .tapestry, state.charFace == 1 {
+                px -= 6
+                if px <= 0 {
+                    Barrier.setBump(&state, world: world, effects: &effects)
+                    try interpreter.step(&state, world: world, effects: &effects)
+                    return
+                }
+            } else if tileF.kind == .potion || tileF.kind == .sword {
+                if !nearBarrier(state, world: world), px == 0 { px = 11 }
+            } else if tileF.kind.isBarrier, px - 2 <= 0 {
+                Barrier.setBump(&state, world: world, effects: &effects)
+                try interpreter.step(&state, world: world, effects: &effects)
+                return
             } else if px == 0,
                       [.looseBoard, .dropButton, .raiseButton,
                        .space, .topBigPillar, .tapestryTop].contains(tileF.kind) {

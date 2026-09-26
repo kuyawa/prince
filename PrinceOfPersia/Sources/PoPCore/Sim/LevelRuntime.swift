@@ -235,6 +235,9 @@ extension LevelRuntime: ActorWorldQuery {
 
 /// The slice of the world the movement code needs.
 public protocol TileWorld: ActorWorldQuery {
+    /// The tile atlas this world draws from. `checkBarrier` and `chopDistance` both need cel
+    /// sizes, and a cel size is only meaningful against a named sheet.
+    var atlasName: String { get }
     func tile(x: Int, y: Int, room: Int) -> Tile
 
     /// `Tile.Gate#canCross(height)` — whether a gate bars passage.

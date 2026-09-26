@@ -1210,6 +1210,64 @@ There is **no `dungeon_chopper_0`**. `Chopper.update` increments `step` before i
 the first frame drawn is 1; the constructor starts the children on frame 5, and steps past 5 leave
 them there. Frame 5 is therefore both the resting pose and the end of the cut. A renderer that asks
 for frame 0 draws nothing at all, and nothing-at-all looks exactly like an empty ceiling.
+
+### 7.9.10 `checkBarrier`, and the closing of open question 11
+
+The last stub in the port, and the one that had been stubbed longest. `checkBarrier` decides where
+a Prince stops at a wall, a gate, a tapestry or a mirror, and turns the contact into a bump.
+
+#### Why it looked impossible
+
+```js
+// tiles/Base.js
+getBounds: function () {
+  bounds.width = 4;
+  bounds.x = this.roomX * 32 + 40;      // forty pixels into a thirty-two pixel cell
+  bounds.y = this.roomY * 63;
+  return bounds;
+},
+getBoundsAbs: function () { return new Phaser.Rectangle(this.x, this.y, this.width, 63); },
+```
+
+`roomX * 32 + 40` looks like a units error — it lands eight pixels into the *next* cell. It is not
+an error, and it is not the only rectangle: `getBoundsAbs` uses the tile’s own origin, which
+carries the 13-pixel cel overhang, and the full cel width. `getCharBounds` reads frame data and
+`getCharBoundsAbs` reads the live sprite, and they disagree by a few pixels.
+
+None of it has an engine-unit equivalent, because it is not physics. It is **screen-space
+collision over cel sizes**, and cel sizes are in the atlas JSON. `SpriteMetrics` is the whole
+answer: transcribe the arithmetic, measure the cels, done.
+
+#### The four rectangles, and which asks for which
+
+| Rectangle | Built from | Used when |
+|---|---|---|
+| `Tile.screenBounds` | `column * 32 + 40`, 4 x 63 | always, first |
+| `Tile.screenBoundsAbs` | tile origin (overhang included), cel width x 63 | second, only unarmed |
+| `ActorState.charBounds` | frame data, face-dependent x shift | always, first |
+| `ActorState.charBoundsAbs` | live sprite position, half-pixel included | second, only unarmed |
+
+A rectangle with **no area never intersects anything** — which is how a tile whose cel is missing
+from the atlas stops colliding instead of colliding with the whole room. And because Phaser tests
+separation with strict comparisons, two rectangles that merely **share an edge do intersect**. Both
+are the reference’s, and the second is the one that is easy to read backwards.
+
+#### One thing the geometry forced
+
+`Behaviour.step`’s mirror and gate branches call `setBump`, and `setBump` ends the tick with
+`processCommand`. So a behaviour verb may run the sequence — which is why `Behaviour.update` now
+takes the interpreter. The reference’s own shape is that a verb *may* call `processCommand`, not
+that it always does; the port had been assuming the latter because nothing had needed the former
+yet.
+
+#### What this closes
+
+Open question 11 is closed. `checkBarrier` is implemented, the `step` verb’s chopper and mirror
+branches are in, and the two stubs in `Behaviour` that said "needs `checkBarrier`" are gone.
+
+What it leaves is the ledge system — `tryGrabEdge`, `checkLedgeSwing`, the `jumphang*` verbs —
+which now has everything it needs and has simply not been written.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1259,7 +1317,7 @@ frame does nothing, which is why the Prince cannot stop instantly.
 | `rdiveroll`, `standup`, `crawl`, `runstop`, `stoop`, `step` | ✅ |
 | `nearBarrier`, `canCrossGate`, `distanceToEdge` | ✅ |
 | `jump` | ❌ not a verb — see below |
-| `checkBarrier` | ❌ needs bounds geometry untangled |
+| `checkBarrier` | ✅ §7.9.10 — transcribed, not re-derived |
 | `tryGrabEdge`, `grab`, `climbup`, `climbdown`, hang states | ❌ need `checkBarrier` |
 | `advance`, `retreat`, `block`, `strike`, `fastsheathe`, `tryEngarde` | ❌ combat (M6) |
 
@@ -1415,10 +1473,11 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
    the LCG (which is ported and tested), but the six-rectangle composite is not. Palace walls
    currently draw their shape child without the colour, so they look flatter than the original.
    Level 4 is the first palace level.
-11. **`checkBarrier`'s bounds geometry** — `Tile.Base#getBounds` returns
-   `(roomX * 32 + 40, roomY * 63, width 4, height 63)`, mixing screen pixels with engine
-   units, and `getCharBounds`/`getCharBoundsAbs` derive from Phaser sprite dimensions.
-   Decide the engine-unit equivalent before porting the function; do not port it verbatim.
+11. ~~**`checkBarrier`'s bounds geometry**~~ — **RESOLVED in M3c, and the premise was wrong.**
+   The question assumed there *was* an engine-unit equivalent to find. There is not, because
+   `checkBarrier` is not physics: it is screen-space collision over cel sizes, and the cels are in
+   the atlas JSON. `SpriteMetrics` reads them, and the four rectangles are transcribed —
+   `(roomX * 32 + 40, roomY * 63, 4, 63)` and all. See §7.9.10.
 
 ---
 
@@ -1457,6 +1516,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M3c | `checkBarrier` is transcribed screen geometry over cel sizes, not a physics model | Every rectangle in it comes from measured cels; trying to re-derive it in engine units was the mistake that kept open question 11 open |
+| M3c | `Behaviour.update` takes the interpreter | Two of its verbs call `setBump`, which ends the tick with `processCommand`. The reference lets a verb run the sequence; it does not require it |
+| M3c | `ScreenRect` lives in `PoPCore/Sim`, not `Render` | It is collision, not drawing. The Render layer happens to use the same cel sizes |
 | M7c-2 | `Level.activateChopper` takes a starting column, and the two callers differ | `checkChoppers` passes `-1` for the leftmost blade; `onChopped` passes its own column for the next one along. Reading it as always-leftmost makes a multi-blade row walkable |
 | M7c-2 | `SpriteMetrics` reads cel sizes from the atlas JSON into `PoPCore` | `chopDistance` and `checkBarrier` both measure Phaser sprite centres, and a sprite is as wide as its current frame. The table is data, not a framework, and a headless test can reach it |
 | M7c-2 | `chopDistance` measures the live state, not the previous tick’s sprite | The reference reads a transform that `updateCharPosition` left stale. That lag is a Phaser artefact; the DOS original had none |

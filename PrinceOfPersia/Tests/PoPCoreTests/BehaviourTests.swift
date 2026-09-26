@@ -59,7 +59,7 @@ private func run(_ script: [Intents], level: LevelRuntime, interpreter: Sequence
     var effects: [ActorEffect] = []
     var result: [Tick] = []
     for intents in script {
-        Behaviour.update(&state, intents: intents, world: level)
+        driveBehaviour(&state, intents: intents, world: level)
         try interpreter.step(&state, world: level, effects: &effects)
         result.append(Tick(state))
     }
@@ -221,12 +221,12 @@ private func harness() throws -> (LevelRuntime, SequenceInterpreter) {
     var held = ActorState(location: 11, room: 1, face: 1, action: "stand")
     held.allowCrawl = false
     held.allowAdvance = false
-    Behaviour.update(&held, intents: [.right], world: level)
+    driveBehaviour(&held, intents: [.right], world: level)
     #expect(held.allowCrawl == false, "holding the facing key must not re-arm the guard")
     #expect(held.allowAdvance == false)
 
     // Releasing it does re-arm, because `!keyR && faceR` now holds.
-    Behaviour.update(&held, intents: .none, world: level)
+    driveBehaviour(&held, intents: .none, world: level)
     #expect(held.allowCrawl)
     #expect(held.allowAdvance)
 
@@ -234,6 +234,6 @@ private func harness() throws -> (LevelRuntime, SequenceInterpreter) {
     // one is held: left down with a right-facing actor still settles `allowCrawl`.
     var crossed = ActorState(location: 11, room: 1, face: 1, action: "stand")
     crossed.allowCrawl = false
-    Behaviour.update(&crossed, intents: [.left], world: level)
+    driveBehaviour(&crossed, intents: [.left], world: level)
     #expect(crossed.allowCrawl, "!keyR && faceR fires even though left is held")
 }

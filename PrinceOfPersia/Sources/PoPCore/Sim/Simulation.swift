@@ -172,6 +172,9 @@ public struct Simulation: Sendable {
     /// is an exclusivity violation in Swift, and the copy is the honest fix rather than an
     /// escape hatch.
     private mutating func step(actorAt index: Int, intents: Intents) {
+        // `Kid.updateTimer` — the bump sound's rate limit.
+        if world.actors[index].bumpTimer > 0 { world.actors[index].bumpTimer -= 1 }
+
         let charName = world.actors[index].charName
         guard let interpreter = interpreters[ActorKind.animationTable(for: charName)] else { return }
 
@@ -180,7 +183,10 @@ public struct Simulation: Sendable {
         // `updateBehaviour` — input for the Prince, the guard brain for everyone else.
         if index == 0 {
             let prince = actor
-            Behaviour.update(&actor, intents: intents, world: world, effects: &effects)
+            try? Behaviour.update(
+                &actor, intents: intents, world: world,
+                interpreter: interpreter, effects: &effects
+            )
             _ = prince
         } else {
             var rng = world.rng
@@ -225,6 +231,14 @@ public struct Simulation: Sendable {
         // take him in half. Runs before the spike checks, matching `updateActor`'s order.
         actor = world.actors[index]
         TileChecks.checkChoppers(&actor, world: &world, effects: &effects)
+        world.actors[index] = actor
+
+        // `checkBarrier` — the screen-space collision that stops the Prince at a wall, a gate, a
+        // tapestry or a mirror, and turns the contact into a bump.
+        actor = world.actors[index]
+        try? Barrier.checkBarrier(
+            &actor, world: world, interpreter: interpreter, effects: &effects
+        )
         world.actors[index] = actor
 
         // `checkButton`.

@@ -86,7 +86,7 @@ private func boardRef() -> TileRef { TileRef(room: 1, x: 6, y: 2) }
     var fellOnTick = 0
     for tick in 1...30 {
         effects.removeAll()
-        Behaviour.update(&actor, intents: .none, world: world, effects: &effects)
+        try? Behaviour.update(&actor, intents: .none, world: world, interpreter: makeKidInterpreter(), effects: &effects)
         world.apply(effects)
         try interpreter.step(&actor, world: world, effects: &effects)
         world.apply(effects)

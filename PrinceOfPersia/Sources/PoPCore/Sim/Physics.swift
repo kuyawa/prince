@@ -344,6 +344,9 @@ public enum FallCycle {
 
         state.fallingBlocks = min(0, state.fallingBlocks)
         state.isInFallDown = true
+        // With the sword out a knockback goes the other way, so a fighting Prince is pushed into
+        // his opponent rather than away from the wall he just hit.
+        state.backwardsFall = state.swordDrawn ? -1 : 1
 
         var action = "stepfall"
         if state.charFrame == 44 { action = "rjumpfall" }

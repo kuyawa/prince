@@ -37,4 +37,8 @@ public enum Geometry {
 
     /// The original renders at 2x. Used for the default window size.
     public static let scaleFactor = 2
+
+    /// Tile sprites overhang their grid cell by this much above. `addTile`:
+    /// `y * BLOCK_HEIGHT - 13`, because a dungeon cel is 79 tall against a 63-pixel row.
+    public static let tileOverhang = 13
 }
