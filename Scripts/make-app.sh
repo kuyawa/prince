@@ -111,6 +111,24 @@ if strings "$APP/Contents/MacOS/Prince of Persia" | grep -q '^/Users/'; then
   echo "    WARNING: the binary names an absolute path under /Users" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# Tell the Finder about it
+# ---------------------------------------------------------------------------
+# This script deletes the app and recreates it at the same path with the same bundle identifier,
+# and the Finder and LaunchServices key their icon caches on exactly that identity. So a rebuild
+# can keep showing the previous icon - or none at all - while the bundle on disk is perfectly
+# correct. Re-registering makes the Finder re-read it.
+#
+# If the Dock is still showing a stale icon after this, it is holding its own copy: `killall Dock`.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+echo
+echo "==> registering with the Finder"
+if [ -f "$APP/Contents/Resources/AppIcon.icns" ]; then
+  touch "$APP"
+  "$LSREGISTER" -f "$APP" >/dev/null 2>&1 && echo "    icon re-registered" || echo "    (lsregister unavailable)"
+else
+  echo "    WARNING: no AppIcon.icns in the bundle - it will show a generic icon" >&2
+fi
 echo
 echo "built $APP"
 du -sh "$APP" | sed "s/^/    /"

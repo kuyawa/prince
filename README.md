@@ -256,6 +256,33 @@ grep -rE 'import (SpriteKit|AppKit|GameplayKit|AVFoundation)' \
 
 ---
 
+---
+
+## Troubleshooting
+
+### The app shows a generic icon, or the previous one
+
+Nothing is wrong with the bundle. `Scripts/make-app.sh` deletes the app and recreates it at the
+same path with the same bundle identifier, and **the Finder and LaunchServices key their icon
+caches on exactly that identity** — so a rebuild keeps showing the old icon, or none at all,
+while the file on disk is perfectly correct.
+
+The script re-registers the bundle with LaunchServices on every build, which handles the Finder.
+If the **Dock** is still stale it is holding its own copy:
+
+```bash
+./Scripts/make-app.sh      # already re-registers; try this first
+killall Dock               # the Dock keeps a separate cache
+```
+
+To confirm the bundle itself is fine:
+
+```bash
+ls "build/Prince of Persia.app/Contents/Resources/AppIcon.icns"
+iconutil -c iconset "build/Prince of Persia.app/Contents/Resources/AppIcon.icns" -o /tmp/i.iconset
+ls /tmp/i.iconset          # ten images, 16x16 through 512x512@2x
+```
+
 ## Licensing
 
 This is a **port**, written from publicly available reimplementations rather than
@@ -274,3 +301,6 @@ exactly what each one contributed:
 * **SDLPoP** — read as a behavioural oracle only, never transcribed. GPLv3.
 * **Mechner's Apple II source** — historical reference, not a port source.
 
+---
+
+Made with ♥️ by DeepSeek
