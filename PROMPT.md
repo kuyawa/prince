@@ -427,9 +427,9 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 **Still open (M6d):**
 - [ ] The **time-up** hand-off: `timeUp` is detected but the host does not yet end the run
 - [ ] The dying animation's splash sprite, and the shadow overlay
-- [ ] **`canReachOpponent` is still simplified** — it keeps a distance test where the reference
-      walks a tile path from `centerX` via `checkPathToOpponent`. Now *unblocked* by `SpriteMetrics`,
-      so a guard can still engage through a thin barrier that the original would have stopped at
+- [x] **`canReachOpponent`** is the real path walk (M3c) — two passes over the columns between the
+      fighters, with the `below` variant dropping a row through a gap. It was the last simplification
+      in the port
 - [ ] **Ledges** — `tryGrabEdge`, `checkLedgeSwing`, `jumphang*`. Everything they need now exists
 
 ### M6 — Combat and guards *(original scope)*
