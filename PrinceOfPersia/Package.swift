@@ -10,14 +10,17 @@ let package = Package(
     targets: [
         // LAW 5: PoPCore declares ZERO dependencies and imports no SpriteKit,
         // AppKit, GameplayKit or AVFoundation. The faithful port lives here.
-        .target(name: "PoPCore"),
-
-        // The Swift 6 rewrite of the host: rendering, input, audio, flow.
+        //
+        // The game assets ship in THIS target's bundle, not PoPHost's, so the data
+        // layer can be exercised headlessly by PoPCoreTests through the same code
+        // path the game uses.
         .target(
-            name: "PoPHost",
-            dependencies: ["PoPCore"],
+            name: "PoPCore",
             resources: [.copy("Resources")]
         ),
+
+        // The Swift 6 rewrite of the host: rendering, input, audio, flow.
+        .target(name: "PoPHost", dependencies: ["PoPCore"]),
 
         .executableTarget(name: "Prince", dependencies: ["PoPHost"]),
 

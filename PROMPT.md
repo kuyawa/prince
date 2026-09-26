@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M1 — data layer** |
-| **Last completed** | **M0 — skeleton.** `swift build` clean, 4/4 tests pass, window opens |
+| **Current milestone** | **M2 — the sequence VM** |
+| **Last completed** | **M1 — data layer.** 30 tests pass; all 14 levels and 7 animation tables decode |
 | **Blocked on** | nothing |
-| **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | Decode levels, animation tables and `fcheck` (`ARCHITECTURE.md` §6) |
+| **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
+| **Next action** | `Opcode`, `SequenceProgram`, `ActorState`. Settle open question 8 (actor `location`) in M3 |
 
 ---
 
@@ -82,12 +82,20 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
       (Cmd-1..Cmd-N), capped to what fits the display. Nothing in `PoPCore` can see it.
       See `ARCHITECTURE.md` §7.9.1.
 
-### M1 — Data layer
-- [ ] `LevelData`, `RoomData`, `Tile`, `GuardSpawn`, `EventTrigger`, `PrinceSpawn` as `Codable` + `Sendable`
-- [ ] `TileKind` enum from `reference/PrinceJS/src/Level.js` (29 values, §6.2)
-- [ ] `AnimationTable` + `FrameDef` decoding, including `fcheck` hex-string → `UInt8`
-- [ ] `FrameCheck` bitfield decode (bits 0–4 foot, 5 thin, 6 check, 7 parity — §7.3)
-- [ ] Decode tests: every level JSON parses; each room has exactly 30 tiles; bit tests pass
+### M1 — Data layer ✅ *complete*
+- [x] `LevelData`, `RoomData`, `Tile`, `GuardSpawn`, `EventTrigger`, `PrinceSpawn` as `Codable` + `Sendable`
+- [x] `TileKind` — **33 values, 0…32**, not 29. §6.2 was wrong and is now corrected
+- [x] `AnimationTable` + `FrameDef` + `SwordOffsetTable` decoding; `fcheck` hex string → `UInt8`
+- [x] `FrameCheck` bitfield (bits 0–4 foot, 5 thin, 6 check, 7 parity — §7.3)
+- [x] Tests: **30 passing**. Levels, tables, bitfields, event holes, the `fcheck` corpus
+- [x] Found and handled five data realities the design had assumed away:
+  - events are **index-addressed with load-bearing `null` holes** (levels 6 and 8)
+  - `guard.reverse` is `-1`, a **number**, not a flag — a `Bool` would decode cleanly and
+    silently drop every guard reversal
+  - rooms with `id == -1` carry **no `tile` key at all** (200 of 476 room slots)
+  - 33 `framedef` entries are **comment-only**, with no `fdx`/`fdy`/`fcheck`
+  - `sword.json` is a **different schema** (`swordtab`), and `shadow.json` holds a
+    **dangling branch** to a sequence it never defines
 
 ### M2 — Sequence VM ⚠️ *the milestone that de-risks everything*
 - [ ] `Opcode` enum, full 256-entry table with `NOOP` default (§7.2)

@@ -142,12 +142,17 @@ Prince/                              ← workspace root
     ├── Package.swift
     ├── Sources/
     │   ├── PoPCore/                 ← NO SpriteKit. The faithful port. Headlessly testable.
-    │   │   ├── Model/               LevelData, RoomData, Tile, TileKind, spawns, events
-    │   │   ├── Anim/                AnimationTable, FrameDef, Opcode, SequenceProgram (the VM)
-    │   │   ├── Actor/               ActorState, FrameCheck, Fighter, Prince, Guard
-    │   │   ├── Sim/                 World, RoomGraph, TileQuery, LCG, Ticker
-    │   │   ├── Combat/              Swordfight resolution
-    │   │   └── Tiles/               Gate, Button, Loose, Chopper, Potion, Spikes, ExitDoor
+    │   │   ├── Geometry.swift       ✅ M0 — the 32 x 63 / 320 x 189 constants
+    │   │   ├── GameData.swift       ✅ M1 — bundle loading, level and table access
+    │   │   ├── Model/               ✅ M1 — LevelData, RoomData, Tile, TileKind, spawns, events
+    │   │   ├── Anim/                ✅ M1 — AnimationTable, FrameDef, FrameCheck, SwordOffsetTable
+    │   │   │                           ⬜ M2 — Opcode, SequenceProgram (the VM)
+    │   │   ├── Actor/               ⬜ M2 — ActorState, Fighter, Prince, Guard
+    │   │   ├── Sim/                 ⬜ M3 — World, RoomGraph, TileQuery, LCG, Ticker
+    │   │   ├── Combat/              ⬜ M6 — Swordfight resolution
+    │   │   ├── Tiles/               ⬜ M7 — Gate, Button, Loose, Chopper, Potion, Spikes, ExitDoor
+    │   │   └── Resources/           ✅ M0 — 7.8 MB of game data, bundled HERE (not PoPHost) so
+    │   │                                PoPCoreTests reaches it by the same path the game uses
     │   ├── PoPHost/                 ← SpriteKit + GameplayKit + AVFoundation
     │   │   ├── Render/              AtlasLoader, RenderDescription, LevelScene, SpriteMap
     │   │   ├── Input/               KeyboardInput → Intents
@@ -211,24 +216,63 @@ Key facts:
 - Rooms are written row-major. `reference/PrinceJS/src/LevelBuilder.js` walks
   `index = y * width + x` and derives neighbours:
   `links.left/right/up/down = getRoomId(x±1, y±1)`. **Links are computed, never stored.**
-- Each room holds exactly **30 tiles** — a 10 × 3 grid, row-major.
-- `location` is a tile index `0..29` within a room. `location 10` = column 0, row 1.
+- Each room holds exactly **30 tiles** — a 10 × 3 grid, row-major, with
+  `tileNumber = y * 10 + x` and **y = 0 at the top**. Confirmed by `LevelBuilder.js#buildTile`
+  and `Level.js#addTile`.
+- **Rooms with `id == -1` carry no `tile` key at all** — 200 of the 476 room slots across the
+  fourteen levels are gaps. A required `[Tile]` rejects valid data.
 - `events[].next` is the event number to chain to, or `0` for none.
+
+#### Event slots are positional and contain holes
+
+```js
+// LevelBuilder.js
+this.level.events = json.events;          // assigned straight through
+
+// Level.js#fireEvent — looked up BY INDEX
+fireEvent: function (event, type, stuck) {
+  if (!this.events[event]) { return; }    // the hole guard
+  let x = (this.events[event].location - 1) % 10;
+  ...
+}
+```
+
+Seven of the fourteen levels contain `null` entries — level 6 has holes at indices
+`1, 3, 4, 5, 7, 8` of 12; level 8 has one at index 5 of 14. **Compacting this array renumbers
+every subsequent event and breaks the game with no error message.** The model preserves the
+optionals; `LevelDecodeTests` asserts the exact hole positions.
+
+#### `location` uses two different conventions
+
+| Context | Conversion | Evidence |
+|---|---|---|
+| **Events** | `(location - 1) % 10`, `(location - 1) / 10` — 1-based, 1…30 | `Level.js:246` |
+| **Actors** (Prince, guards) | `location % 10`, `location / 10` | `Fighter.js:7-8` |
+
+These disagree by one within each row. Only events ever reach location 29 or 30, which is
+consistent with the event reading. **Unresolved — see open question 8.** `RoomData` exposes
+`tile(eventLocation:)` for the event convention and deliberately offers no conversion for the
+actor one until M3 settles it.
 
 ### 6.2 Tile kinds — `reference/PrinceJS/src/Level.js`
 
 `element` is the tile kind; `modifier` is the variant byte. Full table as of the port source:
 
 ```
- 0 SPACE            8 BOTTOM_BIG_PILLAR   16 EXIT_LEFT        24 BALCONY_RIGHT
- 1 FLOOR            9 TOP_BIG_PILLAR      17 EXIT_RIGHT       25 LATTICE_PILLAR
- 2 SPIKES          10 POTION              18 CHOPPER          26 LATTICE_SUPPORT
- 3 PILLAR          11 LOOSE_BOARD         19 TORCH            27 SMALL_LATTICE
- 4 GATE            12 TAPESTRY_TOP        20 WALL             28 LATTICE_LEFT
- 5 STUCK_BUTTON    13 MIRROR              21 SKELETON
- 6 DROP_BUTTON     14 DEBRIS              22 SWORD
- 7 TAPESTRY        15 RAISE_BUTTON        23 BALCONY_LEFT
+ 0 SPACE             8 BOTTOM_BIG_PILLAR  16 EXIT_LEFT          24 BALCONY_RIGHT
+ 1 FLOOR             9 TOP_BIG_PILLAR     17 EXIT_RIGHT         25 LATTICE_PILLAR
+ 2 SPIKES           10 POTION             18 CHOPPER            26 LATTICE_SUPPORT
+ 3 PILLAR           11 LOOSE_BOARD        19 TORCH              27 SMALL_LATTICE
+ 4 GATE             12 TAPESTRY_TOP       20 WALL               28 LATTICE_LEFT
+ 5 STUCK_BUTTON     13 MIRROR             21 SKELETON           29 LATTICE_RIGHT
+ 6 DROP_BUTTON      14 DEBRIS             22 SWORD              30 TORCH_WITH_DEBRIS
+ 7 TAPESTRY         15 RAISE_BUTTON       23 BALCONY_LEFT       31 DEBRIS_ONLY
+                     (…the list runs to 32 NULL)
 ```
+
+**There are 33 kinds, 0…32.** Only `0...29` appear in the shipped levels: `5` (STUCK_BUTTON)
+is an SDLPoP-era addition that the original level set never uses, and `30`, `31`, `32` are
+engine-defined but absent. `modifier` values observed: `0...18` and `20`.
 
 SDLPoP's `doc/tiles.md` documents the tile+modifier combinations the original engine
 supports, including which are SDLPoP-only additions. **The original set is the target**;
@@ -247,8 +291,30 @@ SDLPoP-only combos are opt-in extras.
 }
 ```
 
-Files: `kid.json`, `fighter.json`, `shadow.json`, `vizier.json`, `princess.json`,
-`mouse.json`, `sword.json`. `kid.json` alone has **75 sequences**.
+| File | Sequences | Frame defs |
+|---|---|---|
+| `kid.json` | 75 | 241 |
+| `shadow.json` | 51 | 241 |
+| `fighter.json` | 23 | 36 |
+| `princess.json` | 10 | 48 |
+| `vizier.json` | 5 | 39 |
+| `mouse.json` | 5 | 4 |
+| `sword.json` | — | — |
+
+**`framedef` entries can be comment-only.** `kid.json` has 19 entries carrying nothing but a
+`comment`, `shadow.json` 13, `fighter.json` 1. Every numeric field — `fdx`, `fdy`, `fcheck`,
+`fsword` — is therefore optional, and `fsword` is absent on most *complete* frames too
+(214 of kid's 241). In JavaScript these read as `undefined`; that is only safe because no
+sequence targets them, which `referencedFramesAreComplete` verifies rather than assumes.
+
+**`sword.json` is not an animation table.** Its only key is `swordtab`: 50 `{id, dx, dy}`
+sword-overlay offsets. Same extension, different schema — modelled as `SwordOffsetTable`.
+
+**A dangling branch exists in the source data.** `shadow.json`'s `stepfall` conditionally
+branches to `stepfloat` via `CMD_IFWTLESS` (247), but `shadow.json` defines no such sequence.
+`kid.json` has the identical branch and does define it. The shadow's branch is never taken, so
+the reference is dead — but M2 must not assume every named target resolves. Pinned by
+`theOnlyDanglingSequenceReferenceIsShadowStepfloat`.
 
 ### 6.4 Atlases — `assets/gfx/*.png` + `*.json`
 
@@ -353,7 +419,9 @@ this.charFood   = (fcheck & 0x80) === 0x80; // bit 7  half-pixel parity
 
 `fdx`/`fdy` are the per-frame draw offsets *within* the sequence; `fsword` is the sword
 overlay offset. **Preserve this bitfield exactly** — `fcheck` drives foot placement and
-collision extents, and it is stored as a hex string in JSON, so decode `"0x44"` → `UInt8`.
+collision extents, and it is stored as a hex string in JSON, so decode `"0xC4"` → `UInt8`.
+The data uses a lowercase `0x` with uppercase digits; 50 distinct values appear, from `0x00`
+to `0xEF`.
 
 ### 7.4 The dual coordinate space
 
@@ -605,6 +673,14 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
 6. **SDLPoP-only extensions** — fake tiles, added tile+modifier combos. Opt-in extras, off by
    default. Never let them leak into the faithful core.
 7. **Assets** — stay Ubisoft's. Keep them swappable; replacing them must remain a content job.
+8. **Actor `location` convention** — `Fighter.js:7-8` computes `location % 10` / `location / 10`,
+   but event lookup uses `(location - 1)`. These disagree by one within each row, and only events
+   ever reach 29/30, which favours the event reading. **Resolve in M3 against
+   `SDLPoP/src/seg003.c:665`** (`x_bump[(guard_tile % 10) + FIRST_ONSCREEN_COLUMN]`) before
+   spawning a single actor. Getting this wrong shifts every guard and the Prince by one tile.
+9. **Sword offset indexing** — does `FrameDef.swordFrame` index `swordtab` positionally, or match
+   `id`? The ids are non-contiguous (`1, 6, 2, 3, 7, 8, 4, 5, 31, 9…`). `SwordOffsetTable` exposes
+   both readings and assumes neither. Resolve in M7.
 
 ---
 
@@ -643,4 +719,10 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M1 | Events modelled as `[EventTrigger?]`, holes preserved | `fireEvent` addresses events by index; compacting silently renumbers them |
+| M1 | `FrameDef` numeric fields are optional | 33 comment-only `framedef` entries exist across the shipped tables |
+| M1 | `guard.reverse` / `prince.reverse` are `Int?`, not `Bool?` | The data stores `-1`; a `Bool` would decode cleanly and drop every reversal |
+| M1 | Rooms with `id == -1` decode to an empty `tiles` array | 200 of 476 room slots carry no `tile` key at all |
+| M1 | Game assets bundled in `PoPCore`, not `PoPHost` | The data layer must be exercisable headlessly by `PoPCoreTests` |
+| M1 | `sword.json` is `SwordOffsetTable`, not an `AnimationTable` | Same extension, different schema (`swordtab` only) |
 | M0 | Exclude `maps/custom/` and `assets/web/` from the bundle | 212 third-party levels and 18 MB of website graphics are not part of the game |
