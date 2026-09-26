@@ -144,10 +144,12 @@ Prince/                              ← workspace root
     │   ├── PoPCore/                 ← NO SpriteKit. The faithful port. Headlessly testable.
     │   │   ├── Geometry.swift       ✅ M0 — the 32 x 63 / 320 x 189 constants
     │   │   ├── GameData.swift       ✅ M1 — bundle loading, level and table access
+    │   │   ├── CoordinateSpace.swift ✅ M2 — x-units vs pixels; floor division that matches JS
     │   │   ├── Model/               ✅ M1 — LevelData, RoomData, Tile, TileKind, spawns, events
     │   │   ├── Anim/                ✅ M1 — AnimationTable, FrameDef, FrameCheck, SwordOffsetTable
-    │   │   │                           ⬜ M2 — Opcode, SequenceProgram (the VM)
-    │   │   ├── Actor/               ⬜ M2 — ActorState, Fighter, Prince, Guard
+    │   │   │                        ✅ M2 — Opcode, ActorClass, SequenceInterpreter (the VM)
+    │   │   ├── Actor/               ✅ M2 — ActorState, ActorEffect
+    │   │   │                           ⬜ M6 — Fighter, Prince, Guard
     │   │   ├── Sim/                 ⬜ M3 — World, RoomGraph, TileQuery, LCG, Ticker
     │   │   ├── Combat/              ⬜ M6 — Swordfight resolution
     │   │   ├── Tiles/               ⬜ M7 — Gate, Button, Loose, Chopper, Potion, Spikes, ExitDoor
@@ -398,13 +400,44 @@ All 256 opcodes are pre-registered to `CMD_NOOP`, then overridden. Full table:
 | `0xfe` | 254 | `ABOUTFACE` | Actor | flip facing |
 | `0xff` | 255 | `GOTO` | Actor | `_action = p1`; `_seqpointer = p2 - 1` |
 
-Everything else is `NOOP`. Semantics marked "see reference" are **not yet transcribed** — read the
-body in `Fighter.js` / `Kid.js` before implementing. Do not guess.
+Everything else is `NOOP`.
 
-Swift shape: `enum Opcode: UInt8`, a `SequenceProgram` holding the table and a cursor, and a
-dispatch `switch` (or a `[UInt8: (inout ActorState, Operand) -> Void]` table mirroring
-`registerCommand`). `ACT` (249) is the heaviest — it is the input/autocontrol entry point and
-appears as the first operand of nearly every sequence.
+#### The opcode table is per actor class
+
+`Actor`'s constructor registers **all 256** byte values to `CMD_NOOP`, then overrides six.
+`Fighter` adds three. `Kid` adds seven. `Enemy` and `Mouse` add none. A byte that is a real
+opcode but is **not registered for the actor executing it is a silent no-op**.
+
+| Class | Count | Opcodes |
+|---|---|---|
+| `Actor` | 6 | `FRAME`, `TAP`, `CHY`, `CHX`, `ABOUTFACE`, `GOTO` |
+| `Fighter` | +3 | `DIE`, `SETFALL`, `ACT` |
+| `Kid` | +7 | `NEXTLEVEL`, `EFFECT`, `JARD`, `JARU`, `IFWTLESS`, `DOWN`, `UP` |
+| `Enemy` | — | overrides `TAP` only |
+| `Mouse` | — | extends `Actor`, registers nothing |
+
+**This is not a technicality — the shipped data crosses the classes:**
+
+- `fighter.json`'s `impale` and `shadow.json`'s `standjump`, `runjump`, `softland`, `runjumpdown`,
+  `softlandStandup` all contain `JARD` (244), which only `Kid` registers → no-op for a guard
+- `shadow.json`'s `drinkpotion` contains `EFFECT` (243) → no-op for the shadow
+- `mouse.json`'s `scurry` and `leave` contain `ACT` (249), which `Mouse` does not register → no-op
+
+Modelling the tables as one flat union gives guards and shadows behaviour they have never had
+in any version of this game. `ActorClass` in `Anim/Opcode.swift` encodes the chains, and
+`SequenceVMTests` feeds the *same real data* to different classes and asserts the divergence.
+
+A pleasant consequence: the dangling `shadow.json → stepfloat` reference M1 found is inert
+**precisely because** `IFWTLESS` is a Kid-only opcode. Feeding that data to a Kid throws; to a
+shadow it does nothing. That is asserted, not assumed.
+
+#### The dispatch loop
+
+`ACT` (249) turned out to be trivial — it stores `p1` in `actionCode` and zeroes both velocities
+when `p1 == 1`. It is the *input* system that will be heavy, not this opcode.
+
+`IFWTLESS` (247) is misnamed and ignores its own operand entirely: it simply swaps the current
+fall for its floating variant (`stepfall` → `stepfloat`) when `isInFloat` is set.
 
 ### 7.3 Frame definitions and the `fcheck` bitfield
 
@@ -425,10 +458,39 @@ to `0xEF`.
 
 ### 7.4 The dual coordinate space
 
-Actors live in **two coordinate systems at once**, and keeping them in sync is a real bug source:
+Actors live in **two coordinate systems at once**, and they are not the systems the names
+suggest.
 
-- **Pixel space:** `charX`, `charY` — continuous position.
-- **Tile space:** `charBlockX`, `charBlockY` — which tile the actor occupies.
+> **`charX` is not a pixel.** A room is **140 x-units** wide and **189 pixels** tall.
+> One tile column is **14 x-units**; one tile row is **63 pixels**. The renderer scales x by
+> `320/140` to reach the screen.
+
+| Axis | Unit | Per tile | Per room | Conversion |
+|---|---|---|---|---|
+| `charX` | x-units | 14 | 140 | `Utils.convertX`: `floor(x * 320 / 140)` |
+| `charY` | pixels | 63 | 189 | used directly |
+
+Every horizontal offset in the animation data — `CMD_CHX`, `charFdx`, `charFfoot` — is in
+x-units. Every vertical one is in pixels.
+
+- **Engine space:** `charX` (x-units), `charY` (pixels) — continuous position.
+- **Tile space:** `charBlockX`, `charBlockY` — which tile the actor occupies, derived from the
+  actor's **foot** rather than its origin.
+
+```js
+// Fighter.updateBlockXY — the foot, not the origin
+let footX = this.charX + this.charFdx * this.charFace - this.charFfoot * this.charFace;
+let footY = this.charY + this.charFdy;
+this.charBlockX = Utils.convertXtoBlockX(footX);      // floor((footX - 7) / 14)
+this.charBlockY = Math.min(Utils.convertYtoBlockY(footY), 2);   // floor(footY / 63), clamped
+```
+
+That is what `fcheck` bits 0–4 are for. The `min(…, 2)` is the engine's, not a safety net.
+
+**JavaScript's `Math.floor` rounds toward negative infinity; Swift's `/` truncates toward zero.**
+They disagree whenever an actor walks off the left edge of a room — `floor((0 - 7) / 14)` is `-1`,
+which is exactly what drives the room transition. `CoordinateSpace.floorDivide` exists for this
+and is tested against the negative cases.
 
 Room traversal mutates the *block* coordinate and offsets the pixel coordinate by a whole room
 (`Kid.js`: `charY += 189; charBlockY = 2;` on room-up).
@@ -444,9 +506,15 @@ this.x = this.baseX + PrinceJS.Utils.convertX(tempx);
 this.y = this.baseY + this.charY + this.charFdy;
 ```
 
-**Open design question:** simulate in integer pixel space and scale at render time, or in
-half-point `CGFloat` space? The `0.5` correction suggests the original used a sub-pixel
-accumulator. Decide in M2 and document the choice — do not let it drift.
+**Resolved (M2): everything is `Int`, in the engine's own units.**
+
+`updateVelocity` adds integer velocities, `updateAcceleration` adds an integer `GRAVITY` of 3
+(`TOP_SPEED` 33), and every opcode operand is an integer. Nothing fractional ever exists in the
+simulation, so the model is `Int` and there is no accumulator to get wrong.
+
+The `+0.5` above is a **render-time** parity correction and nothing else. It belongs to
+`CoordinateSpace.screenX(fromX:)`, which takes a `Double` so the caller can apply it, and it
+never touches `ActorState`.
 
 ### 7.5 Combat
 
@@ -664,8 +732,9 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
 1. **Combat tick rate** — global 1/10 s switch, or per-actor? Verify in `SDLPoP/src/seg000.c`.
 2. **Gameplay RNG** — adopt SDLPoP's seedable RNG (reproducible replays) or mirror PrinceJS's
    partial `Math.random()`? Recommendation: adopt SDLPoP's.
-3. **Coordinate representation** — integer pixels plus a half-pixel accumulator, or `CGFloat`
-   half-points? Decide in M2, write it down here, never revisit.
+3. ~~**Coordinate representation**~~ — **RESOLVED in M2.** `Int` throughout, in the engine's
+   own units: `charX` in x-units (140/room), `charY` in pixels (189/room). The `+0.5` is
+   render-only. See §7.4.
 4. **Screen geometry** — room is 320 × 189 inside a 320 × 200 screen. How is the remaining
    11 px reconciled with `UI_HEIGHT = 8`? Check SDLPoP at M4.
 5. **Level chain and cutscenes** — how the 14 levels, 12a/12b split, princess level and the
@@ -678,9 +747,18 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
    ever reach 29/30, which favours the event reading. **Resolve in M3 against
    `SDLPoP/src/seg003.c:665`** (`x_bump[(guard_tile % 10) + FIRST_ONSCREEN_COLUMN]`) before
    spawning a single actor. Getting this wrong shifts every guard and the Prince by one tile.
-9. **Sword offset indexing** — does `FrameDef.swordFrame` index `swordtab` positionally, or match
-   `id`? The ids are non-contiguous (`1, 6, 2, 3, 7, 8, 4, 5, 31, 9…`). `SwordOffsetTable` exposes
-   both readings and assumes neither. Resolve in M7.
+9. ~~**Sword offset indexing**~~ — **RESOLVED while reading `Fighter.updateSwordFrame`:**
+   ```js
+   let stab = this.swordAnims.swordtab[framedef.fsword - 1];
+   this.swordFrame = stab.id;
+   ```
+   `fsword` is a **1-based positional** index into the array; the `id` field is the sprite frame
+   name, not the key. Use `SwordOffsetTable.offset(at: fsword - 1)` in M7. (`offset(id:)` remains
+   for reading the data, but nothing indexes by it.)
+10. **Where does the Prince's `location` convention actually come from?** M2 reproduced
+   `Fighter`'s `location % 10` exactly so behaviour matches the port source, and isolated it in
+   `ActorState.init`. Question 8 stands — resolve it against SDLPoP in M3 before the Prince is
+   placed in a real level.
 
 ---
 
@@ -719,6 +797,10 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M2 | Opcode tables are per actor class, not one flat union | `fighter.json` uses `JARD`, `shadow.json` uses `EFFECT`/`IFWTLESS`, `mouse.json` uses `ACT` — all silent no-ops in the reference |
+| M2 | Simulation is `Int` in engine units; `+0.5` is render-only | `updateVelocity` and `GRAVITY` are integral; nothing fractional exists to represent |
+| M2 | Added a 4096-instruction budget to the dispatch loop | The reference hangs on a bad `GOTO`; unreachable on valid data (longest sequence is ~80 instructions) |
+| M2 | `Fighter`'s `location % 10` reproduced verbatim, isolated in one initialiser | Open question 8 is unresolved; fidelity to the port source beats a guess |
 | M1 | Events modelled as `[EventTrigger?]`, holes preserved | `fireEvent` addresses events by index; compacting silently renumbers them |
 | M1 | `FrameDef` numeric fields are optional | 33 comment-only `framedef` entries exist across the shipped tables |
 | M1 | `guard.reverse` / `prince.reverse` are `Int?`, not `Bool?` | The data stores `-1`; a `Bool` would decode cleanly and drop every reversal |

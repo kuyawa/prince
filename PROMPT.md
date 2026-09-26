@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M2 — the sequence VM** |
-| **Last completed** | **M1 — data layer.** 30 tests pass; all 14 levels and 7 animation tables decode |
+| **Current milestone** | **M3 — movement and tile queries** |
+| **Last completed** | **M2 — the sequence VM.** 56 tests pass; VM matches the reference tick-for-tick |
 | **Blocked on** | nothing |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | `Opcode`, `SequenceProgram`, `ActorState`. Settle open question 8 (actor `location`) in M3 |
+| **Next action** | Settle open question 8 (actor `location`) against SDLPoP **before** placing any actor |
 
 ---
 
@@ -97,13 +97,19 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
   - `sword.json` is a **different schema** (`swordtab`), and `shadow.json` holds a
     **dangling branch** to a sequence it never defines
 
-### M2 — Sequence VM ⚠️ *the milestone that de-risks everything*
-- [ ] `Opcode` enum, full 256-entry table with `NOOP` default (§7.2)
-- [ ] Transcribe opcode bodies from `Actor.js` / `Fighter.js` / `Kid.js` / `Enemy.js`
-- [ ] `ActorState`: `charX/Y`, `charBlockX/Y`, `charFace`, `charFrame`, `action`, `_seqpointer`
-- [ ] `SequenceProgram.tick()` implementing the `while processing` loop — runs until a frame is emitted
-- [ ] Settle the coordinate representation (open question 3) and record it in `ARCHITECTURE.md`
-- [ ] Tests: `startrun`, `stand`, `runjump` step to expected frame/position with **no renderer**
+### M2 — Sequence VM ✅ *complete*
+- [x] `Opcode` enum — 16 values; everything else is `NOOP`, as the reference fills all 256 first
+- [x] Opcode bodies transcribed from `Actor.js` / `Fighter.js` / `Kid.js`
+- [x] `ActorState` + `CoordinateSpace` conversions from `Utils.js`
+- [x] `SequenceInterpreter.step()` — the `while processing` loop, runs until a frame is emitted
+- [x] Open question 3 **closed**: `Int` in engine units. `charX` is x-units (140/room), not pixels
+- [x] Tests: **56 passing**. `stand`, `startrun`, `running`, `turn`, `softland`, `stepfall` traced
+      tick-for-tick against a faithful re-implementation of `processCommand` driving the real
+      `kid.json` — expectations are reference-derived, not hand-computed
+- [x] Per-class opcode gate proved with real data: `shadow.json`'s `softland` shakes for a Kid and
+      is inert for a Fighter; the dangling `shadow → stepfloat` branch is unreachable *because*
+      `IFWTLESS` is Kid-only
+- [x] Open question 9 also closed: `fsword` is a 1-based **positional** index into `swordtab`
 
 ### M3 — Movement and tile queries
 - [ ] `TileQuery`: `checkFloor`, `checkBarrier`, `checkButton`, `checkSpikes`, `checkChoppers`, `checkRoomChange`
