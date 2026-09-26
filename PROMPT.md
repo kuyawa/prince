@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M3 — movement and tile queries** *(in progress)* |
-| **Last completed** | **M3a — world, physics, tiles.** 92 tests pass. Open question 8 **closed** |
-| **Blocked on** | nothing. M3b remaining: `checkBarrier`, `updateBehaviour`, cross-room tile lookup |
+| **Current milestone** | **M3c — barriers, ledges, trobs** *(M3 partly done)* |
+| **Last completed** | **M3b — the control layer.** 101 tests pass. Prince walks, runs, turns, stops |
+| **Blocked on** | nothing. M3c: `checkBarrier` needs bounds geometry untangled (open question 11) |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M3b: `checkBarrier` (120 lines) and `updateBehaviour` (254 lines, the input layer) |
+| **Next action** | M3c, or skip to M4 rendering — the Prince can already walk and fall |
 
 ---
 
@@ -128,12 +128,27 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [x] `FallCycle` — `checkFall`, `land`, `startFall` (open-air path), `checkRoomChange`
 - [x] Headless trace: a free-fall accelerates 3/6/9/12 and lands on frame 4 at charY 53
 
-**Still open (M3b) — these are bigger than the plan assumed:**
-- [ ] `checkBarrier` — `Kid.js:600-719`, **120 lines**: bumping, ledge grabs, `grab`, `bumpFall`
-- [ ] `updateBehaviour` — `Kid.js:237-490`, **254 lines**: the entire input/control layer
+**Done (M3b) — the control layer:**
+- [x] `Intents` — input as a value type (Law 6: the sim never reads the keyboard)
+- [x] `Behaviour.update` — the port of `Kid.updateBehaviour` (`Kid.js:237-490`)
+- [x] Verbs: `turn`, `standjump`, `startrun`, `runturn`, `turnrun`, `runjump`, `rdiveroll`,
+      `standup`, `crawl`, `runstop`, `stoop`, `step`
+- [x] `nearBarrier`, `canCrossGate`, `distanceToEdge`
+- [x] Reference traces for walk → run, turn on the spot, run → stop, and jump from a run
+
+**Still open (M3c):**
+- [ ] `checkBarrier` — `Kid.js:600-719`. Reads Phaser sprite bounds, and `getBounds` mixes
+      screen pixels with engine units (`roomX * 32 + 40`). **Open question 11.** Do not port
+      verbatim; decide the engine-unit equivalent first
+- [ ] `jump()` — **not a verb.** A decision tree over five tile probes that routes into the
+      whole ledge system (`checkClimbable`, `jumphanglong`, `jumpbackhang`, `jumpup`,
+      `highjump`, `climbstairs`). Cannot precede the hanging states
+- [ ] Ledge and hang: `tryGrabEdge`, `grab`, `climbup`, `climbdown`, `hang`, `hangstraight`
 - [ ] `checkButton`, `checkSpikes`, `checkChoppers` — need the trob (interactive tile) layer
-- [ ] Cross-room tile resolution (`Level.js#getRoomX`/`#getRoomY`) — open question 10
+- [ ] Cross-room tile resolution (`Level.js#getRoomX`/`#getRoomY`) — **open question 10**,
+      already observable in the turning trace
 - [ ] Kid's own `checkRoomChange` (the screen-edge version) distinct from Fighter's
+- [ ] `stoop`'s pickup branches (`gotSword`, `drinkPotion`) — need trobs
 - [ ] Preserve the **call order** from `Enemy.js#updateActor` — the order is behaviour
 - [ ] `LCG` (MSVC `rand()`, bit-exact, `UInt32` wrapping) + tests against the reference formula
 - [ ] `Ticker`: fixed timestep accumulator, clamped catch-up, 12 Hz / 10 Hz

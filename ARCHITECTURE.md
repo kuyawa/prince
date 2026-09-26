@@ -149,10 +149,11 @@ Prince/                              ← workspace root
     │   │   ├── Anim/                ✅ M1 — AnimationTable, FrameDef, FrameCheck, SwordOffsetTable
     │   │   │                        ✅ M2 — Opcode, ActorClass, SequenceInterpreter (the VM)
     │   │   ├── Actor/               ✅ M2 — ActorState, ActorEffect
-    │   │   │                           ⬜ M6 — Fighter, Prince, Guard
+    │   │   │                        ✅ M3b — Intents, Behaviour (the control layer)
+    │   │   │                           ⬜ M6 — Fighter, Prince, Guard, combat verbs
     │   │   ├── Sim/                 ✅ M3 — LevelRuntime, TilePredicates, Physics, FallCycle,
     │   │   │                           LCG, Ticker
-    │   │   │                           ⬜ M3 — checkBarrier, updateBehaviour, cross-room tiles
+    │   │   │                           ⬜ M3c — checkBarrier, cross-room tiles, trob queries
     │   │   ├── Combat/              ⬜ M6 — Swordfight resolution
     │   │   ├── Tiles/               ⬜ M7 — Gate, Button, Loose, Chopper, Potion, Spikes, ExitDoor
     │   │   └── Resources/           ✅ M0 — 7.8 MB of game data, bundled HERE (not PoPHost) so
@@ -683,6 +684,57 @@ Original mapping: arrows for movement, **Shift** for drink-potion / grab-ledge /
 **Space** to show remaining time, **Enter** to continue. Because `Intents` is a value, replay,
 demo playback and scripted tests are all the same code path.
 
+### 7.10.1 The control layer
+
+`Behaviour` is the port of `Kid.updateBehaviour` (`Kid.js:237-490`) plus the movement verbs
+it dispatches to (`Kid.js:1223-1700`).
+
+**It does not run the sequence.** In the reference `updateBehaviour` is called from
+`updateActor` immediately before `processCommand`, so a verb only assigns `action` — which
+restarts the sequence from index 0 — and the caller then executes it. That is
+`ActorState.beginAction`, and the distinction from plain assignment is load-bearing:
+`CMD_GOTO` assigns `_action` **directly** and must *not* reset the cursor, or every sequence
+would loop from the top. Getting this wrong is the single easiest way to make the control
+layer silently resume mid-sequence, and it bit the reference tracer during M3b.
+
+#### Two traps in the verbs
+
+**`step` builds its action name from the distance:** `"step" + min(px, 14)`. That is why the
+animation table carries `step1` through `step14` as fourteen separate sequences. The Prince's
+final resting position at a ledge depends on which one runs, so `px` is not cosmetic.
+
+**`runstop` only fires on frames 7 and 11** of the run cycle. Releasing the key at any other
+frame does nothing, which is why the Prince cannot stop instantly.
+
+#### Implemented vs deferred
+
+| Verb | Status |
+|---|---|
+| `turn`, `standjump`, `startrun`, `runturn`, `turnrun`, `runjump` | ✅ |
+| `rdiveroll`, `standup`, `crawl`, `runstop`, `stoop`, `step` | ✅ |
+| `nearBarrier`, `canCrossGate`, `distanceToEdge` | ✅ |
+| `jump` | ❌ not a verb — see below |
+| `checkBarrier` | ❌ needs bounds geometry untangled |
+| `tryGrabEdge`, `grab`, `climbup`, `climbdown`, hang states | ❌ need `checkBarrier` |
+| `advance`, `retreat`, `block`, `strike`, `fastsheathe`, `tryEngarde` | ❌ combat (M6) |
+
+**`jump()` is not a verb.** It is a decision tree over five tile probes (`tile`, `tileT`,
+`tileTF`, `tileTR`, `tileR`) that routes into the entire ledge system — `checkJump`,
+`checkClimbable`, `jumphanglong`, `jumpbackhang`, `jumpup`, `highjump`, `climbstairs` — and
+into `tile.open` for exit doors. It cannot be done before the hanging states are.
+
+**`checkBarrier` reads Phaser sprite bounds**, and `Tile.Base#getBounds` computes
+`x = roomX * 32 + 40` — mixing screen pixels with engine units. Untangling that faithfully,
+without changing when the Prince bumps, is its own piece of work.
+
+#### The gate hook
+
+`nearBarrier` calls `canCrossGate` with `walk` and `turn` both **false**, which short-circuits
+the `(!walk || centreX …)` clause. That is a happy accident of the reference: it means the
+locomotion path needs no screen-space geometry at all. The remaining gate test is
+`tile.canCross(height)`, surfaced as `TileWorld.gateBlocks` — which correctly answers "yes,
+blocking" until M7 wires the animated state, because gates begin closed.
+
 ### 7.11 Game flow
 
 `GKStateMachine` for top-level states only — this is a genuine, contained win:
@@ -793,9 +845,14 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
    for reading the data, but nothing indexes by it.)
 10. **Room-edge tile resolution** — `Level.js#getTileAt` follows room links so that a column
    one past an edge is the neighbour's first column (`getRoomX` / `getRoomY`).
-   `LevelRuntime.tile(x:y:room:)` currently returns the dummy wall there instead. The reference
-   needs the cross-room path to serve `checkBarrier` and ledge grabbing, so it lands with the
-   remaining M3 work.
+   `LevelRuntime.tile(x:y:room:)` returns the dummy wall there instead.
+   This is *observable today*: in the M3b turning trace the Prince reaches column 0 facing
+   left, sees off-map wall instead of the neighbouring room, and steps instead of running.
+   In the real game the neighbour may be open floor. Resolve before M5's room traversal.
+11. **`checkBarrier`'s bounds geometry** — `Tile.Base#getBounds` returns
+   `(roomX * 32 + 40, roomY * 63, width 4, height 63)`, mixing screen pixels with engine
+   units, and `getCharBounds`/`getCharBoundsAbs` derive from Phaser sprite dimensions.
+   Decide the engine-unit equivalent before porting the function; do not port it verbatim.
 
 ---
 
@@ -834,6 +891,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M3b | `Behaviour` sets an action; it never runs the sequence | The reference calls `updateBehaviour` then `processCommand`; merging them would run two dispatches per tick |
+| M3b | Gate state surfaced as `TileWorld.gateBlocks`, defaulting to blocking | Gates begin closed, so this is correct until M7 animates them |
+| M3b | `jump` deferred rather than approximated | It is a decision tree into the ledge system, not a verb; a guess would be untestable |
 | M3 | Actor `location` is `% 10` / `/ 10`; events use `location - 1` | Confirmed in SDLPoP ×3 (`pos_guards`, `do_startpos`, teleport). All 55 actor spawns would have been one column off |
 | M3 | `Fighter.checkRoomChange` keeps its `192` threshold | The room is 189 tall; the reference's value is reproduced rather than tidied |
 | M3 | `LevelRuntime` is a value type and `ActorWorldQuery` is `Sendable` | The world is immutable within a tick, so the simulation can hold it cheaply |

@@ -112,6 +112,17 @@ extension LevelRuntime: ActorWorldQuery {
 /// The slice of the world the movement code needs.
 public protocol TileWorld: ActorWorldQuery {
     func tile(x: Int, y: Int, room: Int) -> Tile
+
+    /// `Tile.Gate#canCross(height)` — whether a gate bars passage.
+    ///
+    /// Gates begin closed and open when a button is pressed, so "blocking" is the correct
+    /// answer for a freshly loaded level. M7 wires the real animated state; until then
+    /// the locomotion verbs behave exactly as they do at the start of a room.
+    func gateBlocks(x: Int, y: Int, room: Int) -> Bool
+}
+
+public extension TileWorld {
+    func gateBlocks(x: Int, y: Int, room: Int) -> Bool { true }
 }
 
 

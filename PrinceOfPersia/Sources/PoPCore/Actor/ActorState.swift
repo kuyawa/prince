@@ -84,6 +84,30 @@ public struct ActorState: Sendable, Equatable {
     /// more is fatal on landing (`Fighter.land`).
     public var fallingBlocks: Int
 
+    // MARK: - Control layer
+    //
+    // Read and written by `Behaviour.update`. Each `allow…` flag latches false when an
+    // action starts and is re-armed once the corresponding key is released, which is how
+    // the reference stops one held key from repeating an action every tick.
+
+    public var allowCrawl: Bool
+    public var allowAdvance: Bool
+    public var allowRetreat: Bool
+    public var allowBlock: Bool
+    public var allowStrike: Bool
+
+    /// Set by `Kid.step` when the actor is pressed against a ledge and must test the
+    /// ground ahead before committing.
+    public var charRepeat: Bool
+
+    /// Counts frames of swinging while hanging. Read by `checkLedgeSwing`.
+    public var ledgeSwing: Int
+
+    public var blockEngarde: Bool
+    public var grabWait: Bool
+    public var hasSword: Bool
+    public var flee: Bool
+
     // MARK: - Init
 
     /// Places an actor at a spawn location.
@@ -131,6 +155,18 @@ public struct ActorState: Sendable, Equatable {
         self.isInFloat = false
         self.isInFallDown = false
         self.fallingBlocks = 0
+
+        self.allowCrawl = true
+        self.allowAdvance = true
+        self.allowRetreat = true
+        self.allowBlock = true
+        self.allowStrike = true
+        self.charRepeat = false
+        self.ledgeSwing = 0
+        self.blockEngarde = false
+        self.grabWait = false
+        self.hasSword = false
+        self.flee = false
     }
 
     // MARK: - Reference semantics
