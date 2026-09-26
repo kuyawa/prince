@@ -1,0 +1,16 @@
+# Research clones — ~86 MB, reproducible from GitHub at any time.
+reference/
+
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
