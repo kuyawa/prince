@@ -45,11 +45,33 @@ public struct World: Sendable {
     }
 
     /// The same tick, with the sounds the mechanisms made handed to the caller.
-    public mutating func update(effects: inout [ActorEffect], cameraRoom: Int? = nil) {
+    public mutating func update(
+        effects: inout [ActorEffect],
+        cameraRoom: Int? = nil,
+        interpreter: SequenceInterpreter? = nil
+    ) {
         // The camera room is the Prince's: a chopper cutting in another room is off screen and
-        // therefore silent, which is what `handleChop`'s room test is for.
+        // therefore silent, which is what handleChop's room test is for.
         state.update(cameraRoom: cameraRoom ?? actors[0].room)
             .forEach { effects.append(.sound($0)) }
+
+        // `Game.floorStopFall` then asks every actor whether a board just landed on it. Only the
+        // Kid is hurt; `Fighter.checkLooseFloor` is empty.
+        guard let interpreter else { return }
+        for index in actors.indices {
+            for landing in state.lastLandings where standsOn(actors[index], landing) {
+                var actor = actors[index]
+                try? TileChecks.damageStruck(
+                    &actor, world: self, interpreter: interpreter, effects: &effects
+                )
+                actors[index] = actor
+            }
+        }
+    }
+
+    /// Whether an actor's feet are on a tile.
+    func standsOn(_ actor: ActorState, _ ref: TileRef) -> Bool {
+        actor.room == ref.room && actor.charBlockX == ref.x && actor.charBlockY == ref.y
     }
 
     /// `handleChop` — set one specific chopper going.

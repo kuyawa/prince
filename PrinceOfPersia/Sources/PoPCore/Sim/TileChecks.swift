@@ -177,6 +177,45 @@ public enum TileChecks {
         if let sound = world.raiseSpikes(at: ref) { effects.append(.sound(sound)) }
     }
 
+    // MARK: - Falling boards
+
+    /// `Kid.damageStruck` — a board landed on him.
+    ///
+    /// ```js
+    /// damageStruck: function () {
+    ///   if (!this.alive) { return; }
+    ///   if (this.action.includes("land")) { return; }
+    ///   if (this.fallingBlocks < 2) { this.fallingBlocks = 2; }
+    ///   if (!this.inFallDown) { this.land(); }
+    /// },
+    /// ```
+    ///
+    /// **The trick is the `fallingBlocks = 2`.** Rather than taking a point off directly, the
+    /// reference makes the game think he has just fallen two floors and calls the ordinary landing
+    /// — which is a medium landing, which is one point of damage. So a board's damage and a
+    /// two-floor drop's damage are the same code path, and a board can finish off a Prince who is
+    /// already at one health, because `land` reaches `damageLife`.
+    ///
+    /// The `includes("land")` guard stops a board landing on somebody who is already landing.
+    ///
+    /// **Guards are exempt.** `Game.floorStopFall` does call `checkLooseFloor` on every enemy, but
+    /// `Fighter.checkLooseFloor` is `function (tile) {}` — empty. Only `Kid` overrides it. So the
+    /// exemption belongs here rather than at the call site, because it is the method that does not
+    /// exist for a guard, not the loop that skips them.
+    public static func damageStruck(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
+        guard state.charName == "kid" else { return }
+        guard state.isAlive else { return }
+        guard !state.action.contains("land") else { return }
+        if state.fallingBlocks < 2 { state.fallingBlocks = 2 }
+        guard !state.isInFallDown else { return }
+        try FallCycle.land(&state, world: world, interpreter: interpreter, effects: &effects)
+    }
+
     /// `Fighter.dieSpikes` — the impaling death. A skeleton is immune.
     public static func dieSpikes(_ state: inout ActorState, effects: inout [ActorEffect]) {
         guard state.isAlive, state.charName != "skeleton" else { return }

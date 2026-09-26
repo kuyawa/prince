@@ -5,6 +5,10 @@ import AppKit
 @MainActor
 public enum MainMenu {
     public static func build(controller: WindowController) -> NSMenu {
+        // The template is written before the menu is built, so "Edit Key Bindings" always has
+        // something to open.
+        KeyBindings.writeTemplateIfMissing()
+
         let mainMenu = NSMenu()
 
         // Application menu
@@ -23,6 +27,20 @@ public enum MainMenu {
                         keyEquivalent: "q")
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
+
+        // Options menu — where the key bindings live.
+        let optionsItem = NSMenuItem()
+        let optionsMenu = NSMenu(title: "Options")
+        optionsMenu.addItem(withTitle: "Edit Key Bindings…",
+                            action: #selector(WindowController.revealKeyBindings(_:)),
+                            keyEquivalent: "k")
+        optionsMenu.items.last?.target = controller
+        optionsMenu.addItem(withTitle: "Reset Key Bindings to Default",
+                            action: #selector(WindowController.resetKeyBindings(_:)),
+                            keyEquivalent: "")
+        optionsMenu.items.last?.target = controller
+        optionsItem.submenu = optionsMenu
+        mainMenu.addItem(optionsItem)
 
         // View menu — the scale switch, as Cmd-1 through Cmd-6.
         let viewItem = NSMenuItem()

@@ -67,6 +67,22 @@ public final class WindowController: NSWindowController {
         setScale(sender.tag)
     }
 
+    // MARK: - Key bindings
+
+    /// Opens the bindings file in whichever editor owns JSON.
+    ///
+    /// Written first if it is not there, so the menu item always has something to open rather
+    /// than silently doing nothing the first time it is used.
+    @objc public func revealKeyBindings(_ sender: Any?) {
+        KeyBindings.writeTemplateIfMissing()
+        NSWorkspace.shared.open(KeyBindings.fileURL)
+    }
+
+    /// Puts the standard bindings back, over whatever the player had.
+    @objc public func resetKeyBindings(_ sender: Any?) {
+        KeyBindings.write(.standard)
+    }
+
     private func report() {
         let size = WindowScale.windowSize(for: scale)
         print("[Prince] window \(Int(size.width))x\(Int(size.height))"

@@ -169,6 +169,9 @@ public struct LevelState: Sendable {
         // A chopper that reaches its cut asks the level for the next one along. Collected here and
         // run after the loop, so a cascade cannot mutate the dictionary mid-iteration.
         var cascades: [(room: Int, row: Int, column: Int)] = []
+        // Where each board that finished falling came to rest. The actors are checked against
+        // these afterwards: a board landing on the Prince's head is a wound, not decoration.
+        var landings: [TileRef] = []
 
         for (ref, var button) in buttons {
             if let push = button.update() {
@@ -188,8 +191,12 @@ public struct LevelState: Sendable {
             let wasFalling = board.phase == .falling
             if let sound = board.update() { sounds.append(sound) }
             if board.phase == .falling, !wasFalling {
-                // onStartFalling -> Level.floorStartFall.
+                // `onStartFalling` -> `Level.floorStartFall`: the hole *is* the mechanism.
                 overrides[ref] = Tile(kind: .space, modifier: 0)
+            }
+            if wasFalling, board.phase == .inactive {
+                // `onStopFalling` -> `Level.floorStopFall`: the board has landed.
+                landings.append(boardLands(from: ref, sounds: &sounds))
             }
             trobs[ref] = .looseBoard(board)
         }
@@ -204,7 +211,62 @@ public struct LevelState: Sendable {
                 room: cascade.room, cameraRoom: cameraRoom
             )
         }
+        lastLandings = landings
         return sounds
+    }
+
+    /// Where the boards that finished falling this tick came to rest. Read by `World`, which
+    /// asks every actor whether it is standing there.
+    public private(set) var lastLandings: [TileRef] = []
+
+    /// `Level.floorStopFall` — a board that has finished falling leaves rubble behind.
+    ///
+    /// ```js
+    /// floorStopFall: function (tile) {
+    ///   let floor = this.getTileAt(tile.roomX, tile.roomY, tile.room);
+    ///   if (floor.element !== TILE_SPACE) {
+    ///     tile.destroy();
+    ///     floor.addDebris();
+    ///     this.shakeFloor(tile.roomY, tile.room);
+    ///   } else {
+    ///     tile.sweep();
+    ///   }
+    /// },
+    /// ```
+    ///
+    /// The board walks down to the first tile that is not space — which is what
+    /// `Level.floorStartFall` already did when it opened the hole, so the landing row was decided
+    /// the moment the board gave way, not now. The walk crosses into the room below when it runs
+    /// off the bottom.
+    ///
+    /// Returns the tile it landed on, for the actors to be checked against.
+    @discardableResult
+    mutating func boardLands(from ref: TileRef, sounds: inout [SoundEffect]) -> TileRef {
+        var room = ref.room
+        var row = ref.y
+
+        while true {
+            // Overrides first: a board that already fell through this column left a hole.
+            let resolved = level.resolve(x: ref.x, y: row, room: room)
+            let here = resolved.flatMap { overrides[$0] }
+                ?? level.tile(x: ref.x, y: row, room: room)
+            if here.kind != .space { break }
+            row += 1
+            if row == Geometry.roomRows {
+                row = 0
+                guard let links = level.roomLinks(room), links.down > 0 else {
+                    // Nowhere left to fall: the board is gone and leaves nothing behind.
+                    return ref
+                }
+                room = links.down
+            }
+        }
+
+        let landing = TileRef(room: room, x: ref.x, y: row)
+        // `addDebris` plays the landing before it checks whether the tile already has any.
+        sounds.append(.looseFloorLands)
+        overrides[landing] = Tile(kind: .debris, modifier: 0)
+        return landing
     }
 
     // MARK: - Choppers

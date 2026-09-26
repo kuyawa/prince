@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M9 — polish** |
-| **Last completed** | **M6d — the splash, the hourglass, and the `action` setter bug.** 317 tests pass |
-| **Blocked on** | nothing. Every subsystem exists and no simplification remains |
+| **Current milestone** | — nothing open. The port is feature-complete |
+| **Last completed** | **M9 — the `.app`, the icon, key bindings, distribution.** 333 tests pass |
+| **Blocked on** | nothing |
 | **Open questions** | 8, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M9: `.app` bundle, icon, keybinding config, distribution. Or the last handful of M6d leftovers below |
+| **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
 
 ---
 
@@ -496,10 +496,27 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [ ] Title, cutscenes (`Cutscene.js`), ending
 - [ ] The full 14-level chain
 
-### M9 — Polish
-- [ ] Xcode project for a signed `.app` bundle, icon, Info.plist
-- [ ] Keybinding configuration
-- [ ] Decide on distribution (see licensing in `ARCHITECTURE.md` §2)
+### M9 — Polish *(complete)*
+- [x] **`Scripts/make-app.sh`** — assembles `Prince.app`: release binary, `Info.plist`,
+      the SwiftPM resource bundle, an icon, an ad-hoc signature. 9 MB
+- [x] **Icon** — centre-cropped from the game’s own `cover.png` through the ten sizes
+      `iconutil` wants
+- [x] **Key bindings** — JSON in Application Support, written on first launch, editable, with an
+      Options menu to open and to reset it
+- [x] **Distribution decided and documented** — see `ARCHITECTURE.md` §7.13
+
+**Notes:**
+- **No Xcode project**, despite the original plan. The risky part of this port is the *simulation*,
+  and SwiftPM is what makes 333 headless tests run in half a second. An Xcode project would put
+  that behind a GUI and buy nothing: the bundle is twenty lines of `cp` either way.
+- **The resource bundle must go in `Contents/Resources`**, not next to the binary — that is
+  where `Bundle.module` searches. Getting it wrong gives an app that launches and immediately
+  dies on a missing level file. Verified by running the bundle.
+- **The signature is ad hoc**, so the app runs on the machine that built it and not elsewhere
+  without an override. Notarising needs a Developer ID, which is a decision about the project
+  rather than about the code. Left honestly undone rather than faked.
+- **Shift is a modifier**, so it never arrives as a key-down in a local event monitor. It is
+  sampled from `NSEvent.modifierFlags`, which also keeps it right across focus changes.
 
 ---
 

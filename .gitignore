@@ -6,6 +6,9 @@ reference/
 .swiftpm/
 Package.resolved
 
+# `Scripts/make-app.sh` output — 9 MB of bundle, rebuilt in twenty seconds.
+build/
+
 # Xcode
 *.xcodeproj
 *.xcworkspace

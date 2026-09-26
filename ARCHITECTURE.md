@@ -1510,6 +1510,67 @@ The temptation is to make everything concurrent. Don't.
 
 ---
 
+### 7.13 Distribution
+
+`Scripts/make-app.sh` assembles `Prince.app`: the release binary, an `Info.plist`, the SwiftPM
+resource bundle, an icon, and an ad-hoc signature. About 9 MB, and `swift build` is the only
+prerequisite.
+
+#### Why SwiftPM and not an Xcode project
+
+The architecture document originally said "Xcode project for a signed `.app` bundle". That is the
+wrong shape for this codebase, and the reason is the test loop. The risky part of this port is the
+*simulation* — 333 headless tests running in half a second — and SwiftPM is what makes that half a
+second. An Xcode project would put the fast loop behind a GUI, and the bundle is twenty lines of
+`cp` either way, so the project would buy nothing that the script does not.
+
+#### Why the signature is ad hoc
+
+`codesign --sign -` is a local, verified-at-launch signature that satisfies the *system*. It is not
+notarised, so the app will not run on another Mac without the usual override. Signing properly needs
+a Developer ID, which needs an Apple Developer account, which is a decision about the project rather
+than about the code. Left honestly undone rather than faked.
+
+#### The one thing that had to be right
+
+`Bundle.module` finds the SwiftPM resource bundle by searching, among others,
+`Bundle.main.resourceURL`. In an app bundle the executable is in `Contents/MacOS`, so the resource
+bundle has to land in `Contents/Resources` — **not** next to the binary. Getting that wrong gives
+an app that launches and immediately dies on a missing level file. The script puts it in the right
+place and the build was verified by running the bundle: level 3 loads and ticks.
+
+#### The icon
+
+Centre-cropped from the game’s own `cover.png`, scaled through the ten sizes `iconutil` wants. It
+is the game’s artwork rather than anything drawn for the purpose, which is honest and better than a
+placeholder — but it is also not a properly designed icon.
+
+### 7.14 Key bindings
+
+The original shipped a key-configuration screen. This does the same job the way a modern Mac game
+does it: a JSON file at
+`~/Library/Application Support/PrinceOfPersia/keys.json`, written from the defaults on first launch
+and editable afterwards. An **Options** menu opens it, and offers a reset.
+
+Two decisions worth stating.
+
+**Application Support, not the bundle.** A `.app` is signed and read-only, and the entire point of
+the file is that it can be edited.
+
+**Loading never fails.** `KeyBindings.load` falls back to the standard bindings for a missing file,
+an unreadable one, or a typo in the JSON. A game that refuses to start because a configuration file
+is malformed is worse than one running with the defaults.
+
+The interesting part of the implementation is that `intents(pressed:shiftHeld:)` is a **pure
+function on a value type**, with no AppKit in it. That is what makes rebinding testable — a test
+hands it a set of key codes and asserts what the simulation would see — and it is the same split
+Law 6 asks for between the keyboard and the simulation. `KeyboardInput` does nothing but supply the
+two inputs.
+
+Shift has a wrinkle: it is a *modifier*, so it does not arrive as a key-down in a local event
+monitor and cannot be read from the pressed-key set. It is sampled from `NSEvent.modifierFlags`
+instead, which also keeps it correct across focus changes. `shiftIsAction` can be turned off for a
+player who binds the action to a letter.
 ## 8. Testing and fidelity verification
 
 The simulation is the risk. Make it testable without a window and you can refactor freely.
@@ -1551,7 +1612,7 @@ one's "done when" passes.**
 | **M6** | Combat + guards: probability tables, swordfight, deaths | A guard can be fought, blocked, killed; the Prince can die |
 | **M7** | Hazards and mechanisms: gates, buttons, loose boards, choppers, potions, spikes, exit door | Level 1 is completable start to finish |
 | **M8** | Audio, UI (health, timer), menus, cutscenes, full level chain | The game is playable from title to level 2 |
-| **M9** | Polish: app bundle, icon, keybinding config, distribution decision | A double-clickable `.app` |
+| **M9** | Polish: app bundle, icon, keybinding config, distribution decision | A double-clickable `.app` — **done:** `Scripts/make-app.sh` |
 
 **M2 is the milestone that de-risks everything.** If the VM is right, the rest is content and
 plumbing. If it is wrong, nothing downstream will ever feel correct.
@@ -1664,6 +1725,12 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M9 | The `.app` is assembled by a script, not an Xcode project | The risky part is the simulation, and SwiftPM is what makes its tests run in half a second. The bundle is twenty lines of `cp` either way |
+| M9 | The resource bundle goes in `Contents/Resources`, not next to the binary | That is where `Bundle.module` searches. Getting it wrong gives an app that launches and dies on a missing level file |
+| M9 | The signature is ad hoc, and that is documented rather than worked around | A Developer ID needs an account, which is a decision about the project rather than about the code |
+| M9 | Key bindings live in Application Support, not the bundle | A signed `.app` is read-only, and the point of the file is that it can be edited |
+| M9 | `KeyBindings.load` never throws and never fails | A game that will not start because a config file has a typo in it is worse than one running with the defaults |
+| M9 | The binding decision is a pure method on a value type | It makes rebinding testable without a window, and it is the same split Law 6 asks for |
 | M6d | `ActorState.action` is a computed property whose setter rewinds `sequencePointer` | That is what the reference’s `action` setter does. As a stored property it worked everywhere except `startFall`, which skipped a `stepfall`’s `ACT 3` and cascaded into `actionCode`, `checkFloor` and `fallingBlocks` |
 | M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |
 | M6d | `Splash.show` is called before the action changes | `showSplash` refuses the four self-bloodying death animations, so the order decides whether a killing blow bleeds |

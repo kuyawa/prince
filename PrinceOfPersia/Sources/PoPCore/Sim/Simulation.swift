@@ -141,7 +141,7 @@ public struct Simulation: Sendable {
         step(actorAt: 0, intents: intents)
 
         // Gates and buttons advance once per tick, after the actors have moved.
-        world.update(effects: &effects)
+        world.update(effects: &effects, interpreter: interpreters[ActorKind.animationTable(for: "kid")])
 
         // The one-second drink animation, and the float potion's eighteen-second clock.
         applyDuePotions()
@@ -257,7 +257,7 @@ public struct Simulation: Sendable {
         // `checkBarrier` — the screen-space collision that stops the Prince at a wall, a gate, a
         // tapestry or a mirror, and turns the contact into a bump.
         actor = world.actors[index]
-        try? Barrier.checkBarrier(
+        _ = try? Barrier.checkBarrier(
             &actor, world: world, interpreter: interpreter, effects: &effects
         )
         world.actors[index] = actor
