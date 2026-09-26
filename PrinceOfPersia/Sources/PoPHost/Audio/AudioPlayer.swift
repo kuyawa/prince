@@ -51,6 +51,9 @@ public final class AudioPlayer {
     private var musicPlayer: AVAudioPlayer?
     private var currentTrack: PoPCore.MusicTrack?
 
+    /// Whether the music is stopped because the host asked, rather than because it ended.
+    private var isPausedByHost = false
+
     /// Every effect played since the last drain, in order. For tests and --trace.
     public private(set) var played: [SoundEffect] = []
 
@@ -113,18 +116,24 @@ public final class AudioPlayer {
 
     // MARK: - Music
 
-    /// Starts a track, looping, unless it is already the one playing.
+    /// Starts a track. **Once** — the music in this game never loops.
     ///
-    /// The reference’s sound.play ignores a call for the track already playing rather than
-    /// restarting it, which matters because the Danger cue is re-issued on several levels.
+    /// Phaser’s `SoundManager.play` passes `loop` straight through and defaults it to false, so
+    /// every music cue in the reference is a one-shot: level 1’s Danger theme plays over the
+    /// opening and stops, and the Victory fanfare on taking the sword plays once. Looping them
+    /// was a mistake here, and an audible one.
+    ///
+    /// **A re-issued cue that has already finished plays again**, which is what makes restarting
+    /// a level work. Only a cue for the track that is *still sounding* is ignored — the reference
+    /// would stack a second copy on top of the first, and a stutter is not a feature.
     public func playMusic(_ track: PoPCore.MusicTrack) {
         guard options.musicEnabled else { return }
-        guard currentTrack != track else { return }
+        guard !(currentTrack == track && musicPlayer?.isPlaying == true) else { return }
 
         let url = root.appendingPathComponent("music/" + track.fileName)
         do {
             let player = try AVAudioPlayer(contentsOf: url)
-            player.numberOfLoops = -1
+            player.numberOfLoops = 0
             player.volume = Self.musicVolume * options.volume
             player.prepareToPlay()
             player.play()
@@ -140,16 +149,38 @@ public final class AudioPlayer {
         musicPlayer?.stop()
         musicPlayer = nil
         currentTrack = nil
+        // Otherwise a later unpause would resume a track that has been thrown away.
+        isPausedByHost = false
     }
 
     public var musicTrack: PoPCore.MusicTrack? { currentTrack }
 
-    /// Pauses or resumes everything, for the pause menu and for losing focus.
+    /// Whether a track is sounding right now. A one-shot ends on its own, so this goes false
+    /// without anybody asking it to.
+    public var isMusicPlaying: Bool { musicPlayer?.isPlaying ?? false }
+
+    /// The music player, for tests. Reading its numberOfLoops is how a test checks that a cue is
+    /// a one-shot rather than a loop, and its identity is how a test checks that a repeat did not
+    /// start a second copy.
+    public var musicPlayerForTesting: AVAudioPlayer? { musicPlayer }
+
+    /// Pauses or resumes the music, for a pause menu or for losing focus.
+    ///
+    /// Only resumes what it paused. Without the flag, unpausing after a one-shot had finished on
+    /// its own would start it over — a cue the player has already heard, playing again for no
+    /// reason.
     public func setPaused(_ paused: Bool) {
         if paused {
+            guard musicPlayer?.isPlaying == true else { return }
             musicPlayer?.pause()
-        } else if musicPlayer != nil {
+            isPausedByHost = true
+        } else if isPausedByHost {
+            // `isPausedByHost` is the whole test. A paused player cannot progress, so if we
+            // paused it, it is still where we left it; and a cue that ended on its own never
+            // set the flag, so it is not resumed. Checking `currentTime` instead would break
+            // the pause-immediately-after-start case, where it is still zero.
             musicPlayer?.play()
+            isPausedByHost = false
         }
     }
 

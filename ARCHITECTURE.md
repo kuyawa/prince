@@ -1043,6 +1043,17 @@ already playing — the reference does the same, and levels 2 and up re-issue th
 an asset problem must never be able to stop the game running. `--mute` and `--no-audio` are launch
 flags, and `--trace` prints each tick's sounds by filename, never positionally.
 
+**Music is a one-shot, and that is not a style choice.** Phaser’s `SoundManager.play` passes
+`loop` straight through and defaults it to false, so every cue in the reference plays once: level
+1’s Danger theme plays over the opening and stops, and the Victory fanfare on taking the sword
+plays once and stops. The port looped them, which was audible within seconds of launching.
+
+Two details fall out of that. A cue **re-issued after it has finished plays again** — which is what
+makes restarting a level work — while a cue for the track that is *still sounding* is ignored,
+because the reference would stack a second copy on top of the first. And `setPaused` resumes only
+what the host itself paused, tracked with a flag rather than inferred from `currentTime`: a paused
+player cannot progress, so the flag is the honest test, and a position check breaks the
+pause-immediately-after-start case where the position is still zero.
 `Game.update` plays the Danger theme once, on level 1, 800 ms in, and only if the map's
 `prince.danger` is not `false`. The other Danger cues in the reference belong to the shadow
 encounters on levels 5 and 6, which are not ported.
@@ -1756,6 +1767,7 @@ Where to look when you have a question. Keep this table current.
 | M7c | `SpriteInstance` carries an optional `atlas` | A potion’s bubbles live in `general`, which belongs to no tile and no actor; guessing by trying every sheet would collide sooner or later |
 | M7c | `World.apply` is handed only the effects it has not seen | It was being handed the whole accumulated array once per stage, which is invisible for an idempotent effect and wrong for a counting one |
 | M7c | The special-potion event path is not built | `POTION_SPECIAL` is 6 and no shipped level contains one; there is nothing to test it against |
+| M8b | Music plays once and does not loop | Phaser’s `SoundManager.play` defaults `loop` to false, so every cue in the reference is a one-shot. Looping them was audible within seconds of launching |
 | M8b | Sound reaches the host as `ActorEffect.sound`, not as a callback from the model | The reference plays sound by global side effect; the effect channel keeps `PoPCore` free of AVFoundation (Law 5) and a headless test silent |
 | M8b | The effects sink is an explicit `inout` parameter, not a `pendingSounds` array on `ActorState` | A field would leak into `Equatable` and would make "never ticked" indistinguishable from "no sounds" |
 | M8b | `Gate`/`ExitDoor`/`LooseBoard.update()` return `SoundEffect?` | The sound is produced by the same call that moves the sprite, so the two cannot drift apart |

@@ -39,20 +39,69 @@ import PoPCore
 }
 
 @MainActor
-@Test func musicStartsAndSurvivesARepeatRequest() {
-    // The only cue the port has on a level start is level 1's Danger theme, so this is the path
-    // that actually runs in the game. Music off is tested above; music on has to reach the engine.
+@Test func musicPlaysOnceAndDoesNotLoop() {
+    // Phaser's SoundManager.play defaults `loop` to false, so every music cue in the reference
+    // is a one-shot: level 1's Danger theme plays over the opening and stops. Looping it was a
+    // mistake here, and an audible one — it never stopped.
     let audio = AudioPlayer(options: .init(soundEnabled: false, musicEnabled: true))
     audio.playMusic(.danger)
     #expect(audio.musicTrack == .danger)
+    #expect(audio.musicPlayerForTesting?.numberOfLoops == 0, "a one-shot, not a loop")
+}
 
-    // A second request for the track already playing is ignored, so the theme is not restarted
-    // every time a level re-issues the cue.
+@MainActor
+@Test func aCueAlreadySoundingIsNotStartedTwice() {
+    // The reference would stack a second copy on top of the first, because it constructs a fresh
+    // Sound every call. A stutter is not a feature.
+    let audio = AudioPlayer(options: .init(soundEnabled: false, musicEnabled: true))
     audio.playMusic(.danger)
-    #expect(audio.musicTrack == .danger)
+    let first = audio.musicPlayerForTesting
+    #expect(first?.isPlaying == true)
 
+    audio.playMusic(.danger)
+    #expect(audio.musicPlayerForTesting === first, "no second player was started")
+}
+
+@MainActor
+@Test func aCueThatHasFinishedPlaysAgain() {
+    // Which is what makes restarting a level work: the same cue arrives, but nothing is sounding,
+    // so it plays.
+    let audio = AudioPlayer(options: .init(soundEnabled: false, musicEnabled: true))
+    audio.playMusic(.danger)
+    let first = audio.musicPlayerForTesting
+
+    first?.stop()
+    #expect(audio.isMusicPlaying == false)
+    audio.playMusic(.danger)
+    #expect(audio.musicPlayerForTesting !== first, "it started over")
+}
+
+@MainActor
+@Test func unmutingTheMusicDoesNotRestartAOneShot() {
+    // Only what the host paused is resumed. A cue that ended on its own has been heard already.
+    let audio = AudioPlayer(options: .init(soundEnabled: false, musicEnabled: true))
+    audio.playMusic(.danger)
+    audio.setPaused(true)
+    #expect(audio.isMusicPlaying == false)
+
+    audio.setPaused(false)
+    #expect(audio.isMusicPlaying == true, "it was paused mid-track, so it resumes")
+
+    // And a track thrown away while paused is not resumed by a later unpause, which is what a
+    // level change during a pause would produce.
+    audio.setPaused(true)
+    audio.stopMusic()
+    audio.setPaused(false)
+    #expect(audio.isMusicPlaying == false)
+}
+
+@MainActor
+@Test func stopMusicEndsItAndForgetsTheTrack() {
+    let audio = AudioPlayer(options: .init(soundEnabled: false, musicEnabled: true))
+    audio.playMusic(.danger)
     audio.stopMusic()
     #expect(audio.musicTrack == nil)
+    #expect(audio.isMusicPlaying == false)
 }
 
 @MainActor
