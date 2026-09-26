@@ -115,6 +115,47 @@ public enum RoomRenderer {
             ]
         }
 
+        if tile.kind == .exitRight {
+            let ref = TileRef(room: room, x: column, y: row)
+            let door = world?.state.trob(at: ref)?.exitDoor
+            let clip = door?.clipTop ?? 0
+
+            var parts = [
+                TilePart(frame: "\(prefix)_17", z: tileBackgroundZ),
+                // ExitDoor.js: make.sprite(10, 12, key, key + "_door")
+                TilePart(frame: "\(prefix)_door", dx: 10, dy: 12,
+                         z: tileBackgroundDetailZ, clipTop: clip),
+                TilePart(frame: "\(prefix)_17_fg", z: tileForegroundZ),
+            ]
+            // The front door graphic only appears once the Prince starts climbing.
+            if door?.isMasked == true {
+                parts.append(TilePart(frame: "\(prefix)_door_fg", z: tileForegroundDetailZ))
+            }
+            return parts
+        }
+
+        if tile.kind == .looseBoard {
+            let ref = TileRef(room: room, x: column, y: row)
+            let board = world?.state.trob(at: ref)?.looseBoard ?? LooseBoard()
+
+            // Loose.js swaps the BACK frame as the board shakes and then drops away.
+            let background: String
+            switch board.phase {
+            case .shaking:
+                // `this.key + Loose.frames[this.step]`, and frames run "_loose_1" ... "_loose_8".
+                background = "\(prefix)_loose_\(min(board.step + 1, LooseBoard.shakeFrames))"
+            case .falling:
+                background = "\(prefix)_falling"
+            case .inactive:
+                background = "\(prefix)_11"
+            }
+
+            return [
+                TilePart(frame: background, z: tileBackgroundZ),
+                TilePart(frame: "\(prefix)_11_fg", z: tileForegroundZ),
+            ]
+        }
+
         let frames = frames(
             for: tile, level: level, room: room, column: column, row: row, prefix: prefix
         )

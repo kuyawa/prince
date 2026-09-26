@@ -197,6 +197,14 @@ public enum FallCycle {
         guard state.charFcheck else { return }
 
         let tile = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
+
+        // Standing on a loose board starts it shaking — and it will give way.
+        if tile.kind == .looseBoard,
+           let ref = world.resolve(x: state.charBlockX, y: state.charBlockY, room: state.room) {
+            effects.append(.shookLooseBoard(ref))
+            return
+        }
+
         guard [TileKind.space, .topBigPillar, .tapestryTop].contains(tile.kind) else { return }
         guard state.isAlive else { return }
 

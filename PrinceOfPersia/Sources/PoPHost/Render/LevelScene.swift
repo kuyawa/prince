@@ -102,8 +102,10 @@ public final class LevelScene: SKScene {
         // `Kid.updateActor`'s order, as far as it is ported:
         //   updateBehaviour, processCommand, updateAcceleration, updateVelocity,
         //   ... checkButton, checkFloor, checkRoomChange
-        Behaviour.update(&actor, intents: sampledIntents, world: world)
+        Behaviour.update(&actor, intents: sampledIntents, world: world, effects: &effects)
+        world.apply(effects)
         try? interpreter.step(&actor, world: world, effects: &effects)
+        world.apply(effects)
 
         Physics.accelerate(&actor)
         Physics.move(&actor)

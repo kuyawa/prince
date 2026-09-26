@@ -154,9 +154,10 @@ Prince/                              ← workspace root
     │   │   ├── Sim/                 ✅ M3 — LevelRuntime, TilePredicates, Physics, FallCycle,
     │   │   │                           LCG, Ticker
     │   │   │                        ✅ M5 — cross-room tile lookup, room wrapping
-    │   │   │                        ✅ M7 — World, LevelState, Gate, Button, TileChecks
-    │   │   │                           ⬜ M7 — loose boards, spikes, choppers, potions, exit door
-    │   │   │                           ⬜ M3c — checkBarrier
+    │   │   │                        ✅ M7 — World, LevelState, Gate, Button, ExitDoor,
+    │   │   │                           LooseBoard, TileChecks
+    │   │   │                           ⬜ M7c — spikes, choppers, potions
+    │   │   │                           ⬜ M3c — checkBarrier (blocks `bump`)
     │   │   ├── Combat/              ⬜ M6 — Swordfight resolution
     │   │   ├── Tiles/               ⬜ M7 — Gate, Button, Loose, Chopper, Potion, Spikes, ExitDoor
     │   │   └── Resources/           ✅ M0 — 7.8 MB of game data, bundled HERE (not PoPHost) so
@@ -755,11 +756,55 @@ arithmetic, and no crop node.
 `SpriteInstance.clipTop` carries the amount, and the host resolves it because only the host knows
 a frame's pixel height.
 
+#### The collapsing floor
+
+`Level.floorStartFall` does not push the Prince anywhere. It **replaces the tile with
+`TILE_SPACE`**:
+
+```js
+floorStartFall: function (tile) {
+  let space = new PrinceJS.Tile.Base(this.game, PrinceJS.Level.TILE_SPACE, 0, tile.type);
+  this.addTile(tile.roomX, tile.roomY, tile.room, space);
+  ...
+}
+```
+
+**The hole is the mechanism.** On the next tick `checkFloor` finds space under him and starts
+him falling, exactly as it would over any other gap — no special case anywhere. `LevelState`
+mirrors this with an `overrides` map, and `World.tile` consults it before the level.
+
+A board shakes for eight frames and then gives way. If it was only *nudged* rather than stood on,
+it settles back at frame 3 instead — which is the entire reason `shake(fall:)` takes a flag.
+
+#### The exit door
+
+`heightOpen = 8 + type`, so 8 pixels remain in a dungeon and 9 in a palace. It raises a pixel a
+tick and drops fifteen. `fireEvent` reaches it exactly as it reaches a gate: a raise button calls
+`raise`, a drop button calls `drop`, and the two-tile-wide door is handled by redirecting an
+`EXIT_LEFT` target to the `EXIT_RIGHT` beside it.
+
+**The port tracks `visibleHeight` directly rather than reproducing the reference's bookkeeping.**
+The reference terminates its raise with `door.height === this.heightOpen`, which works only because
+Phaser's `crop()` rewrites the sprite's `height` from the crop rectangle. The intent is
+unambiguous, and modelling it directly is clearer than reproducing a rendering library's side
+effect.
+
+#### Jumping
+
+`Kid.jump` is not one verb but **five tile probes routing into the ledge system**, ending in
+`jumpup`, `highjump`, `jumphanglong`, `jumpbackhang` or `climbstairs`. The last is how a level
+is finished: standing on an open exit and pressing up runs the stairs sequence, whose
+`NEXTLEVEL` opcode is already wired.
+
+**The two mirror branches are omitted.** They need `bump`, whose physics depend on the same
+screen-space bounds `checkBarrier` owes (open question 11). Each condition is still evaluated and
+returns without changing the action, so control flow matches the reference — only the bump itself
+is missing, and only in rooms containing a mirror.
+
 #### What is not here
 
-Loose boards, spikes, choppers, potions and the exit door all use the same `TileState` shape and
-are the remaining M7 work. `STUCK_BUTTON` is modelled but unused — M1 found the original levels
-never place one.
+Spikes, choppers and potions use the same `Trob` shape and are the remaining M7 work.
+`STUCK_BUTTON` is modelled but unused — M1 found the original levels never place one.
 
 ### 7.10 Input
 
@@ -1000,6 +1045,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M7b | A collapsing board is modelled as a `TILE_SPACE` override | That is literally what `floorStartFall` does; nothing special-cases the Prince falling |
+| M7b | `ExitDoor` tracks `visibleHeight` rather than Phaser's crop bookkeeping | The reference's terminator works only via a rendering library's side effect; the intent is unambiguous |
+| M7b | Behaviour gained an effects channel, with the old signature kept | Climbing past a board and revealing an exit door change the world, and reaching into the level from Behaviour would break the layering |
 | M7 | `LevelRuntime` immutable + `LevelState` mutable, paired by `World` | Keeps level data cheap to share and `Sendable`, and lets a test reset the world without reloading |
 | M7 | A button's `modifier` is an event **index**, not the entry's `number` | Level 1's room-5 buttons (modifiers 8, 9, 11) all resolve to room-5 events; the other reading points one of them at room 8 |
 | M7 | `Gate.actorPassageHeight` is a constant, not the live sprite height | The reference reads a frame-varying Phaser sprite (38–42); the DOS original used fixed cels, so a constant is arguably closer |

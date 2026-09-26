@@ -237,10 +237,22 @@ public protocol TileWorld: ActorWorldQuery {
     /// answer for a freshly loaded level. M7 wires the real animated state; until then
     /// the locomotion verbs behave exactly as they do at the start of a room.
     func gateBlocks(x: Int, y: Int, room: Int) -> Bool
+
+    /// The interactive tile at a position, if the world keeps any.
+    ///
+    /// `climbup` and `climbdown` need more than "does this gate block": they check whether it is
+    /// mid-slam against a *different* height. A bare `LevelRuntime` has no trobs, which is why
+    /// this defaults to `nil`.
+    func trob(x: Int, y: Int, room: Int) -> Trob?
+
+    /// Which tile a lookup names. A bare level cannot cross rooms, so the default is direct.
+    func resolve(x: Int, y: Int, room: Int) -> TileRef?
 }
 
 public extension TileWorld {
     func gateBlocks(x: Int, y: Int, room: Int) -> Bool { true }
+    func trob(x: Int, y: Int, room: Int) -> Trob? { nil }
+    func resolve(x: Int, y: Int, room: Int) -> TileRef? { TileRef(room: room, x: x, y: y) }
 }
 
 

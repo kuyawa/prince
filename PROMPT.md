@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M7 — mechanisms** *(gates, buttons, events done)* |
-| **Last completed** | **M7a — gates, buttons and events.** 145 tests pass. Gates open and close |
+| **Current milestone** | **M7c — spikes, choppers, potions** *(or M6 combat)* |
+| **Last completed** | **M7b — loose boards and the exit door.** 163 tests pass |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M7b (loose boards, spikes, exit door), or M6 combat. Both unblocked |
+| **Next action** | M6 combat (guards), or M7c hazards. Both unblocked |
 
 ---
 
@@ -217,10 +217,31 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - I omitted `checkButton`'s `actionCode` guard on the first pass, so a *falling* actor pressed
   buttons. A test caught it.
 
-**Still open (M7b):**
-- [ ] Loose boards (`Loose.js`), spikes, choppers, potions, and the exit door
-- [ ] `checkSpikes`, `checkChoppers`, and `checkFloor`'s hazard branches
-- [ ] `checkBarrier` is still M3c, and still blocks "level 1 traversable end to end"
+**Done (M7b):**
+- [x] **Loose boards** — eight shake frames, then the board collapses. `floorStartFall` replaces
+      the tile with **SPACE**: the hole *is* the mechanism, and the Prince falls through it with
+      no special case. Level 1's cell is escaped this way
+- [x] **Exit door** — raise 1px/tick until 8 remain, drop 15px/tick, opened by the raise button
+      whose modifier indexes `events[3]`
+- [x] **`jump()`** — the full five-probe decision tree, and **`climbstairs`**, so an open exit
+      actually ends the level. `NEXTLEVEL` was already wired
+- [x] `hang`/`hangstraight`/`climbup`/`climbdown`/`stoop` control flow
+- [x] `LevelState.overrides` for tiles that change, and `Behaviour` gained an effects channel
+
+**Found:**
+- **`floorStartFall` replaces the tile with SPACE.** I expected a "start falling" callback wiring
+  the Prince to the board. There is none — the hole does it.
+- **The exit door's raise terminator depends on Phaser's `crop()` rewriting `sprite.height`.**
+  Modelled as `visibleHeight` instead; the intent is unambiguous.
+- A frame definition's foot offset **only arrives at `CMD_FRAME`**, not at construction, so a test
+  that asserts `charBlockX` before running the sequence is asserting the wrong thing. Cost me two
+  attempts.
+
+**Still open (M7c):**
+- [ ] Spikes, choppers, potions; `checkSpikes` and `checkChoppers`
+- [ ] `tryPickup` — which makes `stoop`'s pickup branches reachable
+- [ ] `checkBarrier` (M3c) — still blocks `bump`, and so the mirror branches of `jump()`
+- [ ] `floorStopFall` — the board landing and becoming debris is not modelled (visual only)
 
 ### M6 — Combat and guards
 - [ ] `Guard` with skill tables from `Enemy.js` — transcribe all twelve columns verbatim

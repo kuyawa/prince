@@ -15,6 +15,12 @@ public enum ActorEffect: Sendable, Equatable {
     /// `NEXTLEVEL` (241). The caller drives the level transition and its music.
     case advanceToNextLevel
 
+    /// The Prince reached the open exit and is climbing the stairs out.
+    case leavingLevel
+
+    /// `ExitDoor.mask` — the door's front graphic is revealed as the Prince climbs it.
+    case maskedExitDoor(TileRef)
+
     /// `UP` (253) found a room above and moved into it.
     case enteredRoom(Int)
 
@@ -24,6 +30,9 @@ public enum ActorEffect: Sendable, Equatable {
 
     /// `JARD` (244) — shake the floor on this row.
     case shakeFloor(room: Int, row: Int)
+
+    /// A loose board was disturbed, by a door being climbed past or a hang. `Loose.shake(true)`.
+    case shookLooseBoard(TileRef)
 
     /// `JARU` (245) — shake the row above, at the actor's column and the one to its right.
     ///

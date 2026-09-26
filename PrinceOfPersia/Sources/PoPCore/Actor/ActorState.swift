@@ -123,6 +123,7 @@ public struct ActorState: Sendable, Equatable {
 
     public var blockEngarde: Bool
     public var grabWait: Bool
+    public var isInJumpUp: Bool
     public var hasSword: Bool
     public var flee: Bool
 
@@ -191,6 +192,7 @@ public struct ActorState: Sendable, Equatable {
         self.ledgeSwing = 0
         self.blockEngarde = false
         self.grabWait = false
+        self.isInJumpUp = false
         self.hasSword = false
         self.flee = false
     }

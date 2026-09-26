@@ -25,11 +25,25 @@
 /// - `checkButton`, `checkSpikes`, `checkChoppers` need the interactive-tile (trob) layer.
 /// - `advance`, `retreat`, `block`, `strike`, `fastsheathe`, `tryEngarde` are combat (M6).
 public enum Behaviour {
-    /// `Kid.updateBehaviour`.
+    /// `Kid.updateBehaviour`, without an effects channel.
+    ///
+    /// A verb that needs to change the world — climbing past a loose board, revealing an exit
+    /// door — records it as an effect instead of reaching into the level.
     public static func update(
         _ state: inout ActorState,
         intents: Intents,
         world: any TileWorld
+    ) {
+        var ignored: [ActorEffect] = []
+        update(&state, intents: intents, world: world, effects: &ignored)
+    }
+
+    /// `Kid.updateBehaviour`.
+    public static func update(
+        _ state: inout ActorState,
+        intents: Intents,
+        world: any TileWorld,
+        effects: inout [ActorEffect]
     ) {
         // The reference bails out before the actor has a position.
         if state.charX == 0 && state.charY == 0 { return }
@@ -77,9 +91,9 @@ public enum Behaviour {
             if intents.contains(.right), state.charFace == 1 {
                 return startrun(&state, world: world)
             }
-            // `jump()` and `tryPickup()` are deferred — see the type comment.
-            if intents.contains(.up) { return }
-            if intents.contains(.down) { return stoop(&state) }
+            if intents.contains(.up) { return jump(&state, world: world, effects: &effects) }
+            if intents.contains(.down) { return stoop(&state, world: world) }
+            // `tryPickup()` — potions and swords — is still M7c.
             if intents.contains(.action) { return }
 
         case "startrun":
@@ -118,11 +132,59 @@ public enum Behaviour {
             if intents.contains(.left), state.charFace == -1, state.allowCrawl { return crawl(&state) }
             if intents.contains(.right), state.charFace == 1, state.allowCrawl { return crawl(&state) }
 
+        case "hang":
+            state.charRepeat = false
+            // A hanging Prince pressed against a wall straightens up.
+            if world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room).kind.isBarrier {
+                state.beginAction("hangstraight")
+                return
+            }
+            let above = world.tile(x: state.charBlockX, y: state.charBlockY - 1, room: state.room)
+            if above.kind == .looseBoard,
+               let ref = resolve(state, dx: 0, dy: -1, world: world) {
+                // The board he is hanging from gives way, and takes him with it.
+                effects.append(.shookLooseBoard(ref))
+                if world.trob(x: state.charBlockX, y: state.charBlockY - 1, room: state.room)?
+                    .looseBoard?.fallStarted == true {
+                    return hangFall(&state)
+                }
+            }
+            if intents.contains(.up), !state.grabWait {
+                return climbup(&state, world: world, effects: &effects)
+            }
+            if !intents.contains(.action) { return hangFall(&state) }
+            if state.charFrame == 92 { state.ledgeSwing += 1 }
+
+        case "hangstraight":
+            state.charRepeat = false
+            if intents.contains(.up), !state.grabWait {
+                return climbup(&state, world: world, effects: &effects)
+            }
+            if !intents.contains(.action) { return hangFall(&state) }
+
+        case "climbup", "climbdown":
+            state.charRepeat = false
+
         default:
-            // Hanging, climbing, falling and combat all have their own arms in the
-            // reference; none is reachable until the systems they depend on exist.
+            // Falling and combat have their own arms in the reference; combat is M6.
             break
         }
+    }
+
+    /// Letting go of a ledge. The action change is picked up by the caller's dispatch.
+    private static func hangFall(_ state: inout ActorState) {
+        state.isInFallDown = true
+        state.swordDrawn = false
+        state.beginAction("stepfall")
+    }
+
+    /// The tile reference a relative offset lands on.
+    static func resolve(_ state: ActorState, dx: Int, dy: Int, world: any TileWorld) -> TileRef? {
+        TileRef(
+            room: state.room,
+            x: state.charBlockX + dx * state.charFace,
+            y: state.charBlockY + dy
+        )
     }
 
     // MARK: - Verbs
@@ -180,10 +242,191 @@ public enum Behaviour {
         state.beginAction("runstop")
     }
 
-    /// `Kid.stoop`. The reference inspects the tile behind the actor; nothing here
-    /// changes the action beyond entering the stoop.
-    public static func stoop(_ state: inout ActorState) {
+    /// `Kid.stoop` — crouching, or lowering yourself over an edge when there is space behind.
+    public static func stoop(_ state: inout ActorState, world: any TileWorld) {
+        let behind = world.tile(
+            x: state.charBlockX - state.charFace, y: state.charBlockY, room: state.room
+        )
+        let overAnEdge = behind.kind == .space || behind.kind == .topBigPillar
+            || (state.charFace == -1 && behind.kind == .tapestryTop)
+
+        if overAnEdge {
+            let centre = CoordinateSpace.x(fromBlockX: state.charBlockX)
+            if state.charFace == -1, state.charX - centre > 4 {
+                return climbdown(&state, world: world)
+            }
+            if state.charFace == 1, state.charX - centre < 9 {
+                return climbdown(&state, world: world)
+            }
+        }
         state.beginAction("stoop")
+    }
+
+    // MARK: - Jumping
+
+    /// `Kid.checkJump`.
+    static func checkJump(_ state: ActorState, _ tile: Tile) -> Bool {
+        (state.charFace == -1 && tile.kind.isSpace)
+            || (state.charFace == 1 && tile.kind.isJumpSpace)
+    }
+
+    /// `Kid.checkClimbable` — anything walkable can be pulled onto, except a hanging when facing
+    /// left, where the frame would be behind you.
+    static func checkClimbable(_ state: ActorState, _ tile: Tile) -> Bool {
+        tile.kind.isWalkable && (state.charFace == 1 || tile.kind != .tapestry)
+    }
+
+    /// `Kid.jump` — the decision tree behind the up key.
+    ///
+    /// Not one verb but five tile probes routing into the ledge system, ending in one of five
+    /// different sequences: `jumpup`, `highjump`, `jumphanglong`, `jumpbackhang` or
+    /// `climbstairs`.
+    ///
+    /// **Omitted:** the two mirror branches need `bump`, whose physics depend on the screen-space
+    /// bounds `checkBarrier` still owes (open question 11). Each condition is still evaluated and
+    /// returns without changing the action, so control flow matches the reference; only the bump
+    /// itself is missing, and only in rooms containing a mirror.
+    public static func jump(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) {
+        let x = state.charBlockX
+        let y = state.charBlockY
+        let face = state.charFace
+        let room = state.room
+
+        var tile = world.tile(x: x, y: y, room: room)
+        let above = world.tile(x: x, y: y - 1, room: room)
+        let aboveFront = world.tile(x: x + face, y: y - 1, room: room)
+        let aboveBehind = world.tile(x: x - face, y: y - 1, room: room)
+        let behind = world.tile(x: x - face, y: y, room: room)
+
+        if tile.kind.isExitDoor {
+            var doorX = x
+            if tile.kind == .exitLeft {
+                doorX = x + 1
+                tile = world.tile(x: doorX, y: y, room: room)
+            }
+            if world.trob(x: doorX, y: y, room: room)?.exitDoor?.isOpen == true {
+                return climbstairs(&state, x: doorX, world: world, effects: &effects)
+            }
+        }
+
+        if face == -1, tile.kind == .mirror {
+            let actorScreenX = CoordinateSpace.screenX(fromX: Double(state.charX))
+            if abs(x * Geometry.blockWidth - actorScreenX) < 30 { return }
+        }
+        if aboveFront.kind == .mirror { return jumpup(&state) }
+
+        if checkJump(state, above), checkClimbable(state, aboveFront) {
+            return jumphanglong(&state)
+        }
+
+        if checkClimbable(state, above), checkJump(state, aboveBehind), behind.kind.isWalkable {
+            if face == -1, CoordinateSpace.x(fromBlockX: x + 1) - state.charX < 11 {
+                state.charBlockX += 1
+                return jumphanglong(&state)
+            }
+            if face == 1, state.charX - CoordinateSpace.x(fromBlockX: x) < 9 {
+                state.charBlockX -= 1
+                return jumphanglong(&state)
+            }
+            return jumpup(&state)
+        }
+
+        if checkClimbable(state, above), checkJump(state, aboveBehind) {
+            if face == -1, CoordinateSpace.x(fromBlockX: x + 1) - state.charX < 11 {
+                return jumpbackhang(&state)
+            }
+            if face == 1, state.charX - CoordinateSpace.x(fromBlockX: x) < 9 {
+                return jumpbackhang(&state)
+            }
+            return jumpup(&state)
+        }
+
+        if above.kind.isSpace { return highjump(&state) }
+        jumpup(&state)
+    }
+
+    public static func jumpup(_ state: inout ActorState) {
+        state.beginAction("jumpup")
+        state.isInJumpUp = true
+    }
+
+    public static func highjump(_ state: inout ActorState) {
+        state.beginAction("highjump")
+    }
+
+    /// The two offsets differ by a pixel and are not a typo.
+    public static func jumpbackhang(_ state: inout ActorState) {
+        let base = CoordinateSpace.x(fromBlockX: state.charBlockX)
+        state.charX = state.charFace == -1 ? base + 7 : base + 6
+        state.beginAction("jumpbackhang")
+    }
+
+    public static func jumphanglong(_ state: inout ActorState) {
+        let base = CoordinateSpace.x(fromBlockX: state.charBlockX)
+        state.charX = state.charFace == -1 ? base + 1 : base + 12
+        state.beginAction("jumphanglong")
+    }
+
+    /// `Kid.climbstairs` — the exit.
+    public static func climbstairs(
+        _ state: inout ActorState,
+        x: Int,
+        world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) {
+        var column = x
+        if world.tile(x: column, y: state.charBlockY, room: state.room).kind == .exitRight {
+            column -= 1
+        } else {
+            column += 1
+        }
+
+        if state.charFace == 1 { state.charFace = -1 }
+        state.charBlockX = column
+        state.charX = CoordinateSpace.x(fromBlockX: column) + 3
+
+        effects.append(.maskedExitDoor(TileRef(room: state.room, x: column, y: state.charBlockY)))
+        effects.append(.leavingLevel)
+        state.beginAction("climbstairs")
+    }
+
+    /// `Kid.climbup`.
+    public static func climbup(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        effects: inout [ActorEffect]
+    ) {
+        state.blockEngarde = false
+        let above = world.tile(x: state.charBlockX, y: state.charBlockY - 1, room: state.room)
+        let gate = world.trob(x: state.charBlockX, y: state.charBlockY - 1, room: state.room)?.gate
+
+        if state.charFace == -1, let gate, gate.phase == .fastDropping || !gate.canCross(height: 15) {
+            state.beginAction("climbfail")
+        } else {
+            state.beginAction("climbup")
+        }
+
+        if above.kind == .looseBoard, let ref = resolve(state, dx: 0, dy: -1, world: world) {
+            effects.append(.shookLooseBoard(ref))
+        }
+    }
+
+    /// `Kid.climbdown`.
+    public static func climbdown(_ state: inout ActorState, world: any TileWorld) {
+        state.blockEngarde = false
+        let base = CoordinateSpace.x(fromBlockX: state.charBlockX)
+        let gate = world.trob(x: state.charBlockX, y: state.charBlockY, room: state.room)?.gate
+
+        if state.charFace == -1, let gate, gate.phase == .fastDropping || !gate.canCross(height: 15) {
+            state.charX = base + 3
+        } else {
+            state.charX = state.charFace == -1 ? base + 6 : base + 7
+            state.beginAction("climbdown")
+        }
     }
 
     /// `Kid.step` — the fine-grained approach to an edge.

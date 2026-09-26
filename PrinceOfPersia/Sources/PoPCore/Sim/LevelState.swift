@@ -27,14 +27,60 @@ public struct TileRef: Hashable, Sendable {
 ///
 /// Port source: `reference/PrinceJS/src/tiles/Gate.js`, `Button.js`, and `Level.js#fireEvent`.
 public struct LevelState: Sendable {
-    /// Gates, keyed by position. Only rooms containing one appear here.
-    public private(set) var gates: [TileRef: Gate] = [:]
+    /// Everything a button or event can act on: gates, exit doors, loose boards.
+    /// Only positions that actually hold one appear here.
+    public private(set) var trobs: [TileRef: Trob] = [:]
 
-    /// Buttons, keyed by position.
+    /// Buttons, keyed by position. These are triggers rather than targets, so they are separate.
     public private(set) var buttons: [TileRef: Button] = [:]
+
+    /// Gates only, for convenience.
+    public var gates: [TileRef: Gate] {
+        trobs.compactMapValues(\.gate)
+    }
+
+    public func trob(at ref: TileRef) -> Trob? { trobs[ref] }
+
+    /// Tiles that have changed since the level loaded.
+    ///
+    /// `Level.floorStartFall` replaces a collapsing board with `TILE_SPACE` outright:
+    ///
+    /// ```js
+    /// floorStartFall: function (tile) {
+    ///   let space = new PrinceJS.Tile.Base(this.game, TILE_SPACE, 0, tile.type);
+    ///   this.addTile(tile.roomX, tile.roomY, tile.room, space);
+    ///   ...
+    /// }
+    /// ```
+    ///
+    /// The hole *is* the mechanism — nothing tells the Prince to fall. On the next tick
+    /// `checkFloor` finds space under him and starts him falling, exactly as it would over any
+    /// other gap.
+    public private(set) var overrides: [TileRef: Tile] = [:]
 
     /// `Level.exitDoorOpen` — set when a raise-button targets an exit door.
     public private(set) var isExitDoorOpen = false
+
+    public func override(at ref: TileRef) -> Tile? { overrides[ref] }
+
+    /// `Level.floorStartFall`.
+    public mutating func openHole(at ref: TileRef) {
+        overrides[ref] = Tile(kind: .space, modifier: 0)
+    }
+
+    /// `ExitDoor.mask`.
+    public mutating func maskExitDoor(at ref: TileRef) {
+        guard var door = trobs[ref]?.exitDoor else { return }
+        door.mask()
+        trobs[ref] = .exitDoor(door)
+    }
+
+    /// `Loose.shake(true)` — a board was disturbed.
+    public mutating func shakeLooseBoard(at ref: TileRef) {
+        guard var board = trobs[ref]?.looseBoard else { return }
+        board.shake(fall: true)
+        trobs[ref] = .looseBoard(board)
+    }
 
     /// The height a gate must clear before an actor fits underneath.
     ///
@@ -49,18 +95,35 @@ public struct LevelState: Sendable {
 
     public init(_ level: LevelRuntime) {
         self.level = level
+        let isPalace = level.data.type == .palace
+
         for room in level.roomNumbers {
             for index in 0..<Geometry.tilesPerRoom {
                 let tile = level.tile(atIndex: index, room: room)
                 let ref = TileRef(room: room, index: index)
                 switch tile.kind {
                 case .gate:
-                    gates[ref] = Gate(modifier: tile.modifier)
+                    trobs[ref] = .gate(Gate(modifier: tile.modifier))
+
+                case .exitRight:
+                    // LevelBuilder: `open = id === startId && Math.abs(tileNumber - startLocation) <= 1`.
+                    // Note it compares a 0-based `tileNumber` against the raw `prince.location`,
+                    // mixing the two conventions — reproduced as written.
+                    let startsOpen = room == level.data.prince.room
+                        && abs(index - level.data.prince.location) <= 1
+                    trobs[ref] = .exitDoor(ExitDoor(
+                        modifier: tile.modifier, isPalace: isPalace, startsOpen: startsOpen
+                    ))
+
+                case .looseBoard:
+                    trobs[ref] = .looseBoard(LooseBoard())
+
                 case .raiseButton, .dropButton, .stuckButton:
                     var button = Button(kind: tile.kind)
                     // A button's modifier is the EVENT INDEX it fires — not a label.
                     button.eventNumber = tile.modifier
                     buttons[ref] = button
+
                 default:
                     break
                 }
@@ -83,9 +146,20 @@ public struct LevelState: Sendable {
             }
             buttons[ref] = button
         }
-        for (ref, var gate) in gates {
-            gate.update()
-            gates[ref] = gate
+        // A board that just gave way takes the floor out with it, for good.
+        for (ref, var trob) in trobs {
+            guard var board = trob.looseBoard else {
+                trob.update()
+                trobs[ref] = trob
+                continue
+            }
+            let wasFalling = board.phase == .falling
+            board.update()
+            if board.phase == .falling, !wasFalling {
+                // `onStartFalling` -> `Level.floorStartFall`.
+                overrides[ref] = Tile(kind: .space, modifier: 0)
+            }
+            trobs[ref] = .looseBoard(board)
         }
 
         for event in pending {
@@ -105,14 +179,22 @@ public struct LevelState: Sendable {
     }
 
     /// The gate at a position, if there is one.
-    public func gate(at ref: TileRef) -> Gate? { gates[ref] }
+    public func gate(at ref: TileRef) -> Gate? { trobs[ref]?.gate }
 
     /// Whether a gate blocks passage, resolving the tile the same way `Level.getTileAt` does.
     public func gateBlocks(x: Int, y: Int, room: Int) -> Bool {
         guard let ref = level.resolve(x: x, y: y, room: room),
-              let gate = gates[ref]
+              let gate = trobs[ref]?.gate
         else { return true }
         return !gate.canCross(height: Self.actorPassageHeight)
+    }
+
+    /// Whether an exit door at a position is open, for `Kid.jump`'s climb-the-stairs branch.
+    public func exitDoorIsOpen(x: Int, y: Int, room: Int) -> Bool {
+        guard let ref = level.resolve(x: x, y: y, room: room),
+              let door = trobs[ref]?.exitDoor
+        else { return false }
+        return door.isOpen
     }
 
     // MARK: - Events
@@ -137,17 +219,17 @@ public struct LevelState: Sendable {
         let target = level.tile(x: targetX, y: y, room: trigger.room)
         let ref = TileRef(room: trigger.room, x: targetX, y: y)
 
-        if kind == .raiseButton {
-            if var gate = gates[ref] {
-                gate.raise(stuck: stuck)
-                gates[ref] = gate
+        // A raise button calls `raise` and a drop button calls `drop` — on whatever the tile is.
+        if var trob = trobs[ref] {
+            if kind == .raiseButton {
+                trob.raise(stuck: stuck)
+                if target.kind == .exitLeft || target.kind == .exitRight {
+                    isExitDoorOpen = true
+                }
+            } else {
+                trob.drop()
             }
-            if target.kind == .exitLeft || target.kind == .exitRight {
-                isExitDoorOpen = true
-            }
-        } else if var gate = gates[ref] {
-            gate.drop()
-            gates[ref] = gate
+            trobs[ref] = trob
         }
 
         // Chaining. The reference drops `stuck` in the recursive call.
