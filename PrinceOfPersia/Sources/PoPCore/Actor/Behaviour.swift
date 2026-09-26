@@ -29,6 +29,9 @@ public enum Behaviour {
     ///
     /// A verb that needs to change the world — climbing past a loose board, revealing an exit
     /// door — records it as an effect instead of reaching into the level.
+    ///
+    /// It throws because a verb may end the tick with `processCommand`, and `startFall` runs the
+    /// fall sequence from inside `updateBehaviour`.
     /// `Kid.updateBehaviour`.
     ///
     /// The interpreter is here because two verbs — `step` against a mirror, and `step` into a
@@ -172,9 +175,36 @@ public enum Behaviour {
 
         case "climbup", "climbdown":
             state.charRepeat = false
+            let spotted = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
+            // The board he is climbing past gives way underneath him.
+            if spotted.kind == .looseBoard,
+               world.trob(x: state.charBlockX, y: state.charBlockY, room: state.room)?
+                   .looseBoard?.fallStarted == true {
+                try FallCycle.startFall(
+                    &state, world: world, interpreter: interpreter, effects: &effects
+                )
+            } else if state.charFrame == 142, spotted.kind == .space {
+                // He has climbed out into nothing.
+                try FallCycle.startFall(
+                    &state, world: world, interpreter: interpreter, effects: &effects
+                )
+            }
+            // The reference also calls `level.recheckCurrentRoom()` on the two frames that finish a
+            // climb. That is a camera decision, and the host derives the camera room from the
+            // Prince every frame already.
+
+        case "jumpfall", "rjumpfall", "bumpfall", "stepfall", "freefall":
+            // The action key, held while falling, is the grab. It is one attempt per tick, and the
+            // first one that finds a ledge ends the fall.
+            state.charRepeat = false
+            if intents.contains(.action) {
+                _ = try tryGrabEdge(
+                    &state, world: world, interpreter: interpreter, effects: &effects
+                )
+            }
 
         default:
-            // Falling and combat have their own arms in the reference; combat is M6.
+            // The combat arms have their own file; see `Combat`.
             break
         }
     }
@@ -184,6 +214,137 @@ public enum Behaviour {
         state.isInFallDown = true
         state.swordDrawn = false
         state.beginAction("stepfall")
+    }
+
+
+    // MARK: - Ledges
+
+    /// `Kid.inGrabDistance` — is the tile close enough sideways to catch?
+    ///
+    /// The offset is asymmetric: facing left the tile must be two units further right than his
+    /// centre, facing right five units further left. That is the reach of the arm, which is drawn
+    /// on one side of the body.
+    public static func inGrabDistance(
+        _ state: ActorState, tile: Tile, column: Int, atlas: String, distance: Int = 30
+    ) -> Bool {
+        let offsetX = state.charFace == -1 ? 2 : -5
+        return abs(tile.centerX(column: column, atlas: atlas) - state.centerX() + offsetX)
+            <= distance
+    }
+
+    /// `Kid.tryGrabEdge` — the action key while falling.
+    ///
+    /// Two chances, in order: the ledge **in front** of him (`charBlockX + face`), then the one he
+    /// is already under (`charBlockX`, with a tighter 20-unit reach). The first is the ordinary
+    /// case; the second is what catches a Prince who has drifted past the edge and is falling down
+    /// its face.
+    ///
+    /// Three guards decide whether either is allowed: he cannot have fallen more than two floors
+    /// (unless floating), his foot must be within 10 units of the edge — 13 for a `stepfall`, which
+    /// is the slowest kind of fall and so gets a longer reach — and he must be within 50 units
+    /// below the floor above, or, for the two fast falls, actually past the floor he fell from.
+    ///
+    /// The tapestry exclusion is the odd one: facing left you cannot catch a tapestry, because a
+    /// tapestry is a thing you stand *behind*, and catching one from the left would draw him in
+    /// front of it.
+    /// @discardableResult
+    public static func tryGrabEdge(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws -> Bool {
+        state.updateBlockPosition()
+
+        // Too far a fall to catch anything — unless floating, which is what the potion is for.
+        if state.fallingBlocks > 2, !state.isInFloat { return false }
+
+        let x = state.charBlockX, y = state.charBlockY, room = state.room
+        let atlas = world.atlasName
+        let behind = world.tile(x: x - state.charFace, y: y - 1, room: room)
+        let front = world.tile(x: x + state.charFace, y: y - 1, room: room)
+        let above = world.tile(x: x, y: y - 1, room: room)
+
+        let reach = distanceToEdge(state)
+            <= 10 + (state.action == "stepfall" ? 3 : 0)
+        let inDistance = reach
+            && (FallCycle.distanceToTopFloor(state) >= -50
+                || (["jumpfall", "freefall"].contains(state.action)
+                    && FallCycle.distanceToFloor(state) > -3))
+
+        let catchable: Set<TileKind> = [.space, .topBigPillar, .tapestryTop]
+
+        if front.kind.isWalkable, catchable.contains(above.kind), inDistance,
+           inGrabDistance(state, tile: front, column: x + state.charFace, atlas: atlas),
+           !(state.charFace == -1 && front.kind == .tapestry) {
+            try grab(&state, at: x, world: world, interpreter: interpreter, effects: &effects)
+            return true
+        }
+
+        if above.kind.isWalkable, catchable.contains(behind.kind), inDistance,
+           inGrabDistance(
+               state, tile: above, column: x, atlas: atlas, distance: 20
+           ),
+           !(state.charFace == -1 && above.kind == .tapestry) {
+            try grab(
+                &state, at: x - state.charFace,
+                world: world, interpreter: interpreter, effects: &effects
+            )
+            return true
+        }
+        return false
+    }
+
+    /// `Kid.grab` — catch the ledge at column `x`.
+    ///
+    /// He is pulled onto the ledge: facing right, one unit past its *right* edge; facing left,
+    /// three units inside its left edge. The velocities are zeroed and the fall is stopped, so the
+    /// hang is not a fall that happens to be drawn differently.
+    ///
+    /// `grabWait` then blocks a climb for half a second, which stops an action key held through
+    /// the grab from pulling him straight back up on the next tick.
+    static func grab(
+        _ state: inout ActorState,
+        at column: Int,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
+        state.updateBlockPosition()
+
+        if state.charFace == -1 {
+            state.charX = CoordinateSpace.x(fromBlockX: column) - 3
+        } else {
+            state.charX = CoordinateSpace.x(fromBlockX: column + 1) + 1
+        }
+        state.charY = CoordinateSpace.y(fromBlockY: state.charBlockY)
+        state.charXVel = 0
+        state.charYVel = 0
+        state.ledgeSwing = 0
+        state.ledgeSwingHalves = 0
+        FallCycle.stopFall(&state)
+        state.updateBlockPosition()
+
+        state.beginAction("hang")
+        effects.append(.sound(.bumpIntoWallHard))
+        try interpreter.step(&state, world: world, effects: &effects)
+
+        // Catching a ledge shakes a loose board above it — and if that is enough to tip the board
+        // over, the thing he just caught is about to disappear.
+        if aboveIsLooseBoard(state, world: world),
+           let ref = resolve(state, dx: 0, dy: -1, world: world) {
+            effects.append(.shookLooseBoard(ref))
+        }
+
+        state.grabWait = true
+        // `Utils.delayed(..., 500)` — six ticks at 1/12 s.
+        state.grabWaitTicks = 6
+    }
+
+    /// Whether the tile directly above the actor is a loose board.
+    static func aboveIsLooseBoard(_ state: ActorState, world: any TileWorld) -> Bool {
+        world.tile(x: state.charBlockX, y: state.charBlockY - 1, room: state.room).kind
+            == .looseBoard
     }
 
     /// The tile reference a relative offset lands on.

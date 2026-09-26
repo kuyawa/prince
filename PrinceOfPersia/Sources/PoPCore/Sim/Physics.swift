@@ -59,6 +59,38 @@ public enum FallCycle {
         CoordinateSpace.y(fromBlockY: state.charBlockY) - state.charY - state.charFdy
     }
 
+    /// `Fighter.distanceToTopFloor` — how far his foot is from the floor of the row *above*.
+    ///
+    /// Negative when he is above that row, which is the case that matters: `tryGrabEdge` allows a
+    /// grab while it is at least -50, so a Prince who has jumped too high cannot catch the ledge on
+    /// the way back down.
+    public static func distanceToTopFloor(_ state: ActorState) -> Int {
+        CoordinateSpace.y(fromBlockY: state.charBlockY - 1) - state.charY - state.charFdy
+    }
+
+    /// `Fighter.stopFall` — a caught ledge ends the fall outright.
+    public static func stopFall(_ state: inout ActorState) {
+        state.fallingBlocks = 0
+        state.isInFallDown = false
+        state.swordDrawn = false
+    }
+
+    /// `Kid.checkLedgeSwing` — once he has swung four times, letting go carries him sideways.
+    ///
+    /// ```js
+    /// if (this.ledgeSwing >= 4) { this.charX += (this.inFloat ? 2.0 : 1.5) * this.charFace; }
+    /// ```
+    ///
+    /// This is the swing-to-momentum mechanic: work the ledge, then drop, and the drop lands you
+    /// somewhere else. The float potion widens the drift from 1.5 to 2 units a tick.
+    public static func checkLedgeSwing(_ state: inout ActorState) {
+        guard state.ledgeSwing >= 4 else { return }
+        state.ledgeSwingHalves += state.isInFloat ? 4 : 3
+        let whole = state.ledgeSwingHalves / 2
+        state.ledgeSwingHalves -= whole * 2
+        state.charX += whole * state.charFace
+    }
+
     /// `Fighter.distanceToEdge` — how far the actor's foot is from the edge of its tile.
     public static func distanceToEdge(_ state: ActorState) -> Int {
         if state.charFace == 1 {

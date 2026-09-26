@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M6d — the presentation leftovers, or the ledge system** |
-| **Last completed** | **M3c — `checkBarrier` and the bump.** 287 tests pass. **Open question 11 is closed** |
-| **Blocked on** | nothing |
+| **Current milestone** | **M6d — the presentation leftovers** |
+| **Last completed** | **Ledges — `tryGrabEdge`, `grab`, `checkLedgeSwing`.** 304 tests pass |
+| **Blocked on** | nothing. **Every subsystem in `ARCHITECTURE.md` now exists** |
 | **Open questions** | 8, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | Ledges (`tryGrabEdge`, `checkLedgeSwing`, `jumphang*`) — everything they need now exists. Or the M6d leftovers: time-up, death splash, shadow overlay |
+| **Next action** | M6d: the time-up hand-off, the death splash, the shadow overlay. Then M9 polish |
 
 ---
 
@@ -430,7 +430,25 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [x] **`canReachOpponent`** is the real path walk (M3c) — two passes over the columns between the
       fighters, with the `below` variant dropping a row through a gap. It was the last simplification
       in the port
-- [ ] **Ledges** — `tryGrabEdge`, `checkLedgeSwing`, `jumphang*`. Everything they need now exists
+**Done (ledges):**
+- [x] **`tryGrabEdge`** — the two probes, the reach asymmetry, and the fall-length and tapestry
+      exclusions
+- [x] **`grab`** — pulled onto the ledge, fall stopped, loose board above shaken, `grabWait` armed
+- [x] **`checkLedgeSwing`** — the swing-to-momentum mechanic, with the float potion's wider drift
+- [x] The fall-action branch of `updateBehaviour`, and `climbup`/`climbdown`'s fall conditions
+- [x] `distanceToTopFloor`, `stopFall`
+
+**Found:**
+- **The grab window is a window in *time*, not just a place.** `distanceToTopFloor >= -50` reads
+  `-63` for a Prince resting on the row below, so a fall only has a few ticks in which catching is
+  possible at all. That is why `stepfall` gets three extra units of reach — it is the slowest fall
+  and spends the fewest ticks in the window.
+- **`checkLedgeSwing` is the only place `charX` is fractional.** It adds **1.5** a tick. The port
+  carries the half in `ledgeSwingHalves`, so the accumulated whole units are exact.
+- **`grabWait` is 500 ms**, not a tick count, in the reference — six ticks at 1/12 s.
+- **Verified live**: level 1 room 12, walking off the ledge at column 4 with the action key held,
+  he catches the ledge at tick 18 and the loose board above him shakes. That is the level-1 opening,
+  which the port could not previously play.
 
 ### M6 — Combat and guards *(original scope)*
 - [ ] `Guard` with skill tables from `Enemy.js` — transcribe all twelve columns verbatim

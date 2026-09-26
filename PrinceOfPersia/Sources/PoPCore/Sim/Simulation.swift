@@ -172,8 +172,13 @@ public struct Simulation: Sendable {
     /// is an exclusivity violation in Swift, and the copy is the honest fix rather than an
     /// escape hatch.
     private mutating func step(actorAt index: Int, intents: Intents) {
-        // `Kid.updateTimer` — the bump sound's rate limit.
+        // `Kid.updateTimer` — the bump sound's rate limit, and the half-second after a grab
+        // during which the ledge cannot be climbed.
         if world.actors[index].bumpTimer > 0 { world.actors[index].bumpTimer -= 1 }
+        if world.actors[index].grabWaitTicks > 0 {
+            world.actors[index].grabWaitTicks -= 1
+            if world.actors[index].grabWaitTicks == 0 { world.actors[index].grabWait = false }
+        }
 
         let charName = world.actors[index].charName
         guard let interpreter = interpreters[ActorKind.animationTable(for: charName)] else { return }
@@ -264,6 +269,8 @@ public struct Simulation: Sendable {
             try? FallCycle.checkFall(
                 &actor, world: world, interpreter: interpreter, effects: &effects
             )
+            // After the landing test, so a caught ledge is not also swung from.
+            FallCycle.checkLedgeSwing(&actor)
         }
         world.actors[index] = actor
         applyNewEffects()

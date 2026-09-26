@@ -170,6 +170,17 @@ public struct ActorState: Sendable, Equatable {
     /// ground ahead before committing.
     public var charRepeat: Bool
 
+    /// Half-units of sideways drift from `checkLedgeSwing`.
+    ///
+    /// The reference adds **1.5** to `charX` on every tick of a swing, which makes `charX`
+    /// fractional — the only place in the engine where it is. The port keeps `charX` an `Int` and
+    /// carries the half here, so the accumulated whole units are identical and only a sub-unit
+    /// fraction is ever lost, and only to comparisons that read `charX` directly.
+    public var ledgeSwingHalves: Int
+
+    /// Ticks left on `grabWait`, which stops a freshly-grabbed ledge being climbed instantly.
+    public var grabWaitTicks: Int
+
     /// Counts frames of swinging while hanging. Read by `checkLedgeSwing`.
     public var ledgeSwing: Int
 
@@ -262,6 +273,8 @@ public struct ActorState: Sendable, Equatable {
         self.allowStrike = true
         self.charRepeat = false
         self.ledgeSwing = 0
+        self.ledgeSwingHalves = 0
+        self.grabWaitTicks = 0
         self.blockEngarde = false
         self.grabWait = false
         self.isInJumpUp = false

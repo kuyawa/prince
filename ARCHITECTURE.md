@@ -1275,6 +1275,68 @@ drop a row through a gap.
 What it leaves is the ledge system — `tryGrabEdge`, `checkLedgeSwing`, the `jumphang*` verbs —
 which now has everything it needs and has simply not been written.
 
+### 7.9.11 Ledges
+
+The last subsystem, and the one that had been waiting longest: everything it needed — hanging
+states, the `jump` decision tree, screen-space geometry — existed before any of it was written.
+
+#### The grab window is *when*, not just *where*
+
+```js
+let isInDistance =
+  this.distanceToEdge() <= 10 + (["stepfall"].includes(this.action) ? 3 : 0) &&
+  (this.distanceToTopFloor() >= -50 ||
+   (["jumpfall", "freefall"].includes(this.action) && this.distanceToFloor() > -3));
+```
+
+`distanceToTopFloor` is `convertBlockYtoY(charBlockY - 1) - charY - charFdy`, which is **negative**
+for a Prince below the floor of the row above. Standing on row 1 it reads `-63`, well outside the
+`-50` the grab allows; the window opens only while his feet are still within fifty pixels of the
+ledge he is trying to catch. So a fall has a grab window of a few ticks, and missing it means
+missing it.
+
+That is why a `stepfall` gets three extra units of reach: it is the slowest fall, and the reference
+is compensating for how few ticks it spends in the window.
+
+#### Two chances, in order
+
+The ledge **in front** (`charBlockX + face`, reach 30) is tried first, then the one he is already
+under (`charBlockX`, reach 20). The first is the ordinary case; the second is what catches a Prince
+who has drifted past the edge and is falling down its face. `inGrabDistance` is asymmetric — offset
+`+2` facing left, `-5` facing right — because the arm is drawn on one side of the body.
+
+The tapestry exclusion is the odd one and is not a mistake: facing left you cannot catch a tapestry,
+because a tapestry is a thing you stand *behind*, and catching one from the left would draw him in
+front of it.
+
+#### The one place `charX` is fractional
+
+```js
+checkLedgeSwing: function () {
+  if (this.ledgeSwing >= 4) { this.charX += (this.inFloat ? 2.0 : 1.5) * this.charFace; }
+}
+```
+
+**1.5.** `charX` is an integer everywhere else in the engine; here it is not, and the fraction
+persists across ticks. The port keeps `charX` an `Int` and carries the half in
+`ActorState.ledgeSwingHalves`, which reproduces the accumulated whole units exactly — four ticks
+give +1, +2, +1, +2 — and loses only a sub-unit fraction, and only to comparisons that read `charX`
+directly rather than through `convertX`.
+
+This is the swing-to-momentum mechanic: work the ledge four times, let go, and the drop carries you
+sideways. The float potion widens the drift from 1.5 to 2.
+
+#### `grabWait` and the half-second
+
+`grab` sets `grabWait` for 500 ms, which stops an action key held *through* the grab from pulling
+him straight back up on the next tick. The port counts six ticks rather than reading a clock, the
+same substitution the potion delay uses.
+
+#### Verified in play
+
+Level 1 room 12, walking right off the ledge at column 4 with the action key held: he falls, catches
+the ledge at tick 18, and the loose board above him shakes — because column 2's row 0 *is* a loose
+board. That is the level-1 opening, which the port could not previously play.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1523,6 +1585,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| Ledge | `tryGrabEdge` is two probes, front (reach 30) then overhead (reach 20) | The second catches a Prince who has drifted past the edge and is falling down its face |
+| Ledge | `charX` stays `Int`; the fractional swing is carried in `ledgeSwingHalves` | `checkLedgeSwing` adds 1.5 a tick, the only fractional `charX` in the engine. Carrying the half reproduces the whole units exactly |
+| Ledge | `grabWait` counts six ticks rather than reading a clock | The same substitution as the potion delay: 500 ms at 1/12 s |
 | M3c | `canReachOpponent` is the real path walk, not a distance test | `SpriteMetrics` unblocked it along with `checkBarrier`. A guard can no longer engage through a wall the original would have stopped at |
 | M3c | `checkPathToOpponent` keeps the reference’s `+ 10` widening for a cross-room opponent | It is what lets a guard at a doorway reach into the next room; without it guards never notice a Prince in the next room |
 | M3c | `checkBarrier` is transcribed screen geometry over cel sizes, not a physics model | Every rectangle in it comes from measured cels; trying to re-derive it in engine units was the mistake that kept open question 11 open |
