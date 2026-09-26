@@ -898,6 +898,34 @@ displayed in practice, because the first `CMD_FRAME` replaces it before anything
 `makeNode` returns nil for a missing texture exactly as Phaser renders nothing for a missing
 frame. Levels 4, 5, 6 and 12 contain shadows; level 13 Jaffar.
 
+### 7.9.5 Level chaining
+
+`CMD_NEXTLEVEL` (241) fires `onLevelFinished`, then `onNextLevel` after a delay:
+
+```js
+Kid.prototype.CMD_NEXTLEVEL = function (data) {
+  PrinceJS.maxHealth = this.maxHealth;
+  let waitTime = 0;
+  if (PrinceJS.currentLevel === 4) { this.game.sound.play("TheShadow"); waitTime = 9000; }
+  else if (![13,14].includes(PrinceJS.currentLevel)) {
+    this.game.sound.play("Prince"); waitTime = 13000;
+  }
+  ...
+};
+```
+
+That wait exists purely to let the "Prince" theme finish — thirteen seconds, or nine on level 4 for
+the shadow. **With no audio yet it is dead time, so the hand-off is immediate.**
+
+The mechanism stays in `PoPCore`: the sequence's opcode becomes an `ActorEffect`, the scene turns
+it into a callback, and `PoPHost.GameCoordinator` decides what a "next level" is. Nothing in the
+simulation knows that levels are numbered.
+
+Health carries: `PrinceJS.maxHealth = this.maxHealth`, and the current health is passed onward.
+The Princess is rescued at the end of level 14, and the run stops rather than loading a
+nonexistent 15 — `nextLevel(after:)` is a pure function so that decision is testable without a
+window.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1145,6 +1173,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M6c | Level chaining lives in `PoPHost`, the trigger in `PoPCore` | The simulation emits an effect; only the host knows levels are numbered |
+| M6c | The next-level decision is a `nonisolated` pure function | It is the one part of the coordinator that can be tested without a window |
+| M6c | Added a `PoPHostTests` target | Host policy — chaining, window scale, atlas slicing — otherwise accumulates in the scene where nothing can reach it |
 | M6b | `Simulation` owns the tick, in `PoPCore` rather than the scene | It is game logic; keeping it here means a duel runs headlessly and the scene has no rules in it |
 | M6b | The Prince is fixed at actor index 0 | Combat must name an opponent; an index is the value-type equivalent of the reference's object reference |
 | M6b | Actors are copied out of the array between steps | Assigning through `world.actors[i]` while handing `world` to a function is an exclusivity violation; the copy is the honest fix |

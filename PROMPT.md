@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M7c — spikes, choppers, potions** |
-| **Last completed** | **M6b — guards in the level.** 195 tests pass. Guards notice, draw and advance |
+| **Current milestone** | **M7c — spikes, choppers, potions** *(or M8 audio, UI and cutscenes)* |
+| **Last completed** | **M6c — sword overlay and level chaining.** 208 tests pass |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M7c hazards, or M6c (sword overlay, health pips, level chaining) |
+| **Next action** | M7c hazards, or M8 audio and UI. Both unblocked |
 
 ---
 
@@ -280,12 +280,24 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - Swift's exclusivity rules forbid assigning through `world.actors[i]` while handing `world` to
   a function, so the tick copies each actor out and back. The copy is the honest fix.
 
-**Still open (M6c):**
-- [ ] The sword overlay sprite (frames are in the `sword` atlas, already loaded)
+**Done (M6c):**
+- [x] **Sword overlay** — `Fighter.updateSwordPosition`, drawn at z 21 from the `sword` atlas
+- [x] **Level chaining** — `CMD_NEXTLEVEL` → effect → `GameCoordinator` loads the next level
+- [x] Health and max health carry across a level change; finishing level 14 ends the run
+- [x] Added a **`PoPHostTests`** target; `nextLevel(after:)` is a pure `nonisolated` function
+
+**Found:**
+- The sword's frame comes from `swordtab[fsword - 1].id`, a **1-based positional** index — the
+  clearest confirmation of open question 9.
+- Level 1's Prince, running at a guard with his sword **sheathed**, dies on contact. That is
+  `stab`'s `charName === "kid" && !swordDrawn` branch, and it is working as intended.
+- The sword atlas is not named for any actor, so a test that collected "available frames" per
+  `charName` missed it. Worth remembering when adding an atlas.
+
+**Still open (M6d):**
 - [ ] Guard colour tints from `GuardSpawn.colors`
+- [ ] The dying animation's splash sprite, and the shadow overlay
 - [ ] Health pips and the rest of the UI
-- [ ] `NEXTLEVEL` fires but nothing consumes it — no level chaining
-- [ ] The dying animation and the splash
 - [ ] `canReachOpponent` is **simplified** — the reference walks a tile path measured from
       `centerX` (open question 11)
 

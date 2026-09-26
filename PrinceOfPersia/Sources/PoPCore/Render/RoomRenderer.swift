@@ -13,6 +13,8 @@ public enum RoomRenderer {
     public static let tileBackgroundZ = 10
     public static let tileBackgroundDetailZ = 11
     public static let actorZ = 20
+    /// The sword overlay. `Fighter`'s constructor sets `this.sword.z = 21`.
+    public static let swordZ = 21
     public static let tileForegroundZ = 30
     /// Detail drawn on top of the foreground — a gate's moving panel.
     public static let tileForegroundDetailZ = 31
@@ -279,12 +281,27 @@ public enum RoomRenderer {
         // Fighter.updateBase adds 3 to baseY.
         let y = 3 + actor.charY + actor.charFdy
 
-        return [SpriteInstance(
+        var sprites = [SpriteInstance(
             frameName: "\(actor.charName)-\(actor.charFrame)",
             x: x, y: y,
             anchor: .bottomLeft,
             z: actorZ,
             flippedHorizontally: actor.charFace == -1
         )]
+
+        // `Fighter.updateSwordPosition` — the overlay is its own sprite, drawn just above the
+        // actor. Note there is no `swordDrawn` test: whether the frame carries an `fsword` *is*
+        // the sword-drawn state, so a frame without one shows no blade however the flag reads.
+        if actor.isActive, actor.hasSwordFrame {
+            sprites.append(SpriteInstance(
+                frameName: "sword\(actor.swordFrame)",
+                x: x + actor.swordDx * actor.charFace,
+                y: y + actor.swordDy,
+                anchor: .bottomLeft,
+                z: swordZ,
+                flippedHorizontally: actor.charFace == -1
+            ))
+        }
+        return sprites
     }
 }

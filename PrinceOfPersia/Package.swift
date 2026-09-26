@@ -25,6 +25,11 @@ let package = Package(
         .executableTarget(name: "Prince", dependencies: ["PoPHost"]),
 
         .testTarget(name: "PoPCoreTests", dependencies: ["PoPCore"]),
+
+        // Host-side policy: level chaining, window scale, atlas slicing. These touch SpriteKit
+        // but need no window, and keeping them testable is what stops logic accumulating in the
+        // scene where it cannot be reached.
+        .testTarget(name: "PoPHostTests", dependencies: ["PoPHost"]),
     ],
     swiftLanguageModes: [.v6]
 );

@@ -174,6 +174,8 @@ func everyGuardFrameTheRendererAsksForExistsOnceRunning(number: Int) throws {
     for name in Set(world.actors.map(\.charName)) {
         available.formUnion(try GameData.atlasFrameNames(named: ActorKind.atlasName(for: name)))
     }
+    // Actors also draw from the shared sword overlay atlas, which is not named for any actor.
+    available.formUnion(try GameData.atlasFrameNames(named: "sword"))
 
     var missing: Set<String> = []
     for actor in world.actors {

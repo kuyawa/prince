@@ -32,15 +32,34 @@ public struct Simulation: Sendable {
         }
     }
 
-    public init(level: LevelRuntime, seed: Int = 0, strength: Int = 100) throws {
+    /// - Parameters:
+    ///   - princeHealth: carried across a level change. `CMD_NEXTLEVEL` does
+    ///     `PrinceJS.maxHealth = this.maxHealth` and passes the current health to the next level.
+    public init(
+        level: LevelRuntime,
+        seed: Int = 0,
+        strength: Int = 100,
+        princeHealth: Int? = nil,
+        princeMaxHealth: Int? = nil
+    ) throws {
         self.world = World(level, seed: seed, strength: strength)
+
+        if let princeHealth { world.actors[0].health = princeHealth }
+        if let princeMaxHealth {
+            world.actors[0].maxHealth = princeMaxHealth
+            world.actors[0].health = min(world.actors[0].health, princeMaxHealth)
+        }
 
         for actor in world.actors {
             let tableName = ActorKind.animationTable(for: actor.charName)
             if interpreters[tableName] == nil {
+                // Only a Fighter can hold a sword, so the Kid's and the guards' tables get one.
+                let offsets = ActorKind.actorClass(for: actor.charName) == .actor
+                    ? nil : try? GameData.swordOffsetTable()
                 interpreters[tableName] = SequenceInterpreter(
                     table: try GameData.animationTable(named: tableName),
-                    actorClass: ActorKind.actorClass(for: actor.charName)
+                    actorClass: ActorKind.actorClass(for: actor.charName),
+                    swordOffsets: offsets
                 )
             }
         }

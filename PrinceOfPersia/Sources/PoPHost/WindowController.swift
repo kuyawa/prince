@@ -13,11 +13,13 @@ public final class WindowController: NSWindowController {
     private let scene: SKScene
     private let skView: SKView
 
-    public init(initialScale: Int, scene: SKScene) {
+    /// Takes the view rather than making one, so a level coordinator can present replacement
+    /// scenes into the same view as the run progresses.
+    public init(initialScale: Int, view: SKView, scene: SKScene) {
         let normalized = WindowScale.fitted(initialScale)
         let size = WindowScale.windowSize(for: normalized)
 
-        let view = SKView(frame: NSRect(origin: .zero, size: size))
+        view.frame = NSRect(origin: .zero, size: size)
         view.preferredFramesPerSecond = 60
         view.ignoresSiblingOrder = true
 

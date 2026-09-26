@@ -272,7 +272,10 @@ public struct ActorState: Sendable, Equatable {
     /// Absent fields map to zero. The reference reads `undefined` and would carry NaN
     /// into every later offset; that path is unreachable because referenced frames are
     /// always complete, but an `Int` model still has to choose something.
-    public mutating func applyFrameDefinition(_ definition: FrameDef?) {
+    public mutating func applyFrameDefinition(
+        _ definition: FrameDef?,
+        swordOffsets: SwordOffsetTable? = nil
+    ) {
         guard let definition else { return }
         charFdx = definition.dx ?? 0
         charFdy = definition.dy ?? 0
@@ -283,7 +286,17 @@ public struct ActorState: Sendable, Equatable {
         charFcheck = check.isCheckActive
         charFthin = check.isThin
 
-        hasSwordFrame = definition.swordFrame != nil
+        // `Fighter.updateSwordFrame`: the offset table is indexed 1-based and positionally, and
+        // the entry's `id` names the sprite frame — `"sword" + id`.
+        if let index = definition.swordFrame, let table = swordOffsets,
+           let offset = table.offset(at: index - 1) {
+            hasSwordFrame = true
+            swordFrame = offset.id
+            swordDx = offset.dx
+            swordDy = offset.dy
+        } else {
+            hasSwordFrame = definition.swordFrame != nil
+        }
     }
 
     /// The pure half of `Fighter.updateBlockXY`:

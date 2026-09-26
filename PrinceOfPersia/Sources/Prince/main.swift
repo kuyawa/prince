@@ -73,6 +73,7 @@ let levelNumber = value(for: "--level", in: arguments).flatMap(Int.init) ?? 1
 
 // A screenshot holds one direction for the whole run so the frame is reproducible.
 let hold: Intents? = value(for: "--hold", in: arguments).map(intents(named:))
+let seedValue = value(for: "--seed", in: arguments).flatMap(Int.init) ?? 0
 
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
@@ -82,7 +83,7 @@ do {
     scene = try buildScene(
         levelNumber: levelNumber,
         hold: hold,
-        seed: value(for: "--seed", in: arguments).flatMap(Int.init) ?? 0,
+        seed: seedValue,
         room: value(for: "--room", in: arguments).flatMap(Int.init),
         location: value(for: "--location", in: arguments).flatMap(Int.init)
     )
@@ -182,7 +183,14 @@ if let path = value(for: "--screenshot", in: arguments) {
     }
     app.run()
 } else {
-    let controller = WindowController(initialScale: scale, scene: scene)
+    let input = KeyboardInput()
+    let view = SKView()
+    let coordinator = try! GameCoordinator(
+        view: view, level: levelNumber, seed: seedValue, input: input
+    )
+    let controller = WindowController(
+        initialScale: scale, view: view, scene: coordinator.scene
+    )
     app.mainMenu = MainMenu.build(controller: controller)
     controller.showWindow(nil)
     app.activate(ignoringOtherApps: true)

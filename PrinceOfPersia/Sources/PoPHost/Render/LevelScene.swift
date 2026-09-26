@@ -37,8 +37,23 @@ public final class LevelScene: SKScene {
 
     private var sampledIntents: Intents { scriptedIntents ?? input.intents }
 
-    public init(level: LevelRuntime, input: KeyboardInput, seed: Int = 0) throws {
-        self.simulation = try Simulation(level: level, seed: seed)
+    /// Calls out when the Prince climbs an exit. The coordinator loads the next level; the scene
+    /// does not know what a "next level" is.
+    public var onLevelFinished: ((_ completedLevel: Int, _ health: Int, _ maxHealth: Int) -> Void)?
+
+    private var hasReportedFinish = false
+
+    public init(
+        level: LevelRuntime,
+        input: KeyboardInput,
+        seed: Int = 0,
+        carriedHealth: Int? = nil,
+        carriedMaxHealth: Int? = nil
+    ) throws {
+        self.simulation = try Simulation(
+            level: level, seed: seed,
+            princeHealth: carriedHealth, princeMaxHealth: carriedMaxHealth
+        )
         self.input = input
         self.background = try TextureAtlas(
             named: level.data.type == .dungeon ? "dungeon" : "palace"
@@ -53,6 +68,8 @@ public final class LevelScene: SKScene {
         for actor in simulation.world.actors {
             _ = try? atlas(for: actor.charName)
         }
+        // The sword overlay lives in its own atlas, named by the offset table's `id`.
+        characterAtlases["sword"] = try? TextureAtlas(named: "sword")
         redraw()
     }
 
@@ -104,6 +121,15 @@ public final class LevelScene: SKScene {
     public func step() {
         simulation.tick(intents: sampledIntents)
         ticksRun += 1
+
+        // `CMD_NEXTLEVEL` fires `onLevelFinished`, then `onNextLevel` after a delay that exists
+        // purely to let the "Prince" theme finish — 13 seconds, or 9 on level 4 for the shadow.
+        // With no audio yet, that wait is dead time and the hand-off is immediate.
+        if !hasReportedFinish, simulation.effects.contains(.advanceToNextLevel) {
+            hasReportedFinish = true
+            let prince = simulation.world.prince
+            onLevelFinished?(simulation.world.level.data.number, prince.health, prince.maxHealth)
+        }
     }
 
     /// Runs a fixed number of ticks, for headless screenshots and tests.

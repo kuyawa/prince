@@ -25,6 +25,13 @@ public struct SequenceInterpreter: Sendable {
     public let table: AnimationTable
     public let actorClass: ActorClass
 
+    /// The sword overlay offsets, if this actor can hold a sword.
+    ///
+    /// `Fighter.updateSwordFrame` indexes it with `swordtab[framedef.fsword - 1]` — a **1-based
+    /// positional** index, not a lookup by the table's `id` field. Open question 9, resolved when
+    /// this line was found.
+    public let swordOffsets: SwordOffsetTable?
+
     /// Safety stop for a malformed sequence that never emits a frame.
     ///
     /// The reference has no such guard — a bad `GOTO` loop hangs the browser. The
@@ -32,9 +39,14 @@ public struct SequenceInterpreter: Sendable {
     /// fire on valid data; it converts a hang into a diagnosable error.
     public static let instructionBudget = 4096
 
-    public init(table: AnimationTable, actorClass: ActorClass) {
+    public init(
+        table: AnimationTable,
+        actorClass: ActorClass,
+        swordOffsets: SwordOffsetTable? = nil
+    ) {
         self.table = table
         self.actorClass = actorClass
+        self.swordOffsets = swordOffsets
     }
 
     public enum Failure: Error, Equatable, CustomStringConvertible {
@@ -127,7 +139,7 @@ public struct SequenceInterpreter: Sendable {
                 )
             }
             state.charFrame = index
-            state.applyFrameDefinition(table.frameDefs[index])
+            state.applyFrameDefinition(table.frameDefs[index], swordOffsets: swordOffsets)
             // Room transitions happen here, inside the sequence, exactly as in the reference:
             // `CMD_FRAME` is the only caller of `updateBlockXY`.
             state.updateBlockPosition(world: world)
