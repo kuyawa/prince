@@ -14,12 +14,23 @@ public enum RoomRenderer {
     public static let tileBackgroundDetailZ = 11
     public static let actorZ = 20
     public static let tileForegroundZ = 30
+    /// Detail drawn on top of the foreground — a gate's moving panel.
+    public static let tileForegroundDetailZ = 31
 
     /// Tile sprites overhang their grid cell by this much. `addTile`: `y * BLOCK_HEIGHT - 13`.
     public static let tileOverhang = 13
 
     public static func describe(
+        world: World,
+        room: Int,
+        actors: [ActorState] = []
+    ) -> RenderDescription {
+        describe(level: world.level, world: world, room: room, actors: actors)
+    }
+
+    public static func describe(
         level: LevelRuntime,
+        world: World? = nil,
         room: Int,
         actors: [ActorState] = []
     ) -> RenderDescription {
@@ -29,26 +40,22 @@ public enum RoomRenderer {
         for row in 0..<Geometry.roomRows {
             for column in 0..<Geometry.roomColumns {
                 let tile = level.tile(x: column, y: row, room: room)
-                let x = column * Geometry.blockWidth
-                let y = row * Geometry.blockHeight - tileOverhang
-                let frames = frames(
-                    for: tile, level: level, room: room, column: column, row: row, prefix: prefix
-                )
+                let baseX = column * Geometry.blockWidth
+                let baseY = row * Geometry.blockHeight - tileOverhang
 
-                sprites.append(SpriteInstance(
-                    frameName: frames.background, x: x, y: y,
-                    anchor: .topLeft, z: tileBackgroundZ
-                ))
-                if let detail = frames.backgroundDetail {
+                for part in tileParts(
+                    for: tile, level: level, world: world, room: room,
+                    column: column, row: row, prefix: prefix
+                ) {
                     sprites.append(SpriteInstance(
-                        frameName: detail, x: x, y: y,
-                        anchor: .topLeft, z: tileBackgroundDetailZ
+                        frameName: part.frame,
+                        x: baseX + part.dx,
+                        y: baseY + part.dy,
+                        anchor: .topLeft,
+                        z: part.z,
+                        clipTop: part.clipTop
                     ))
                 }
-                sprites.append(SpriteInstance(
-                    frameName: frames.foreground, x: x, y: y,
-                    anchor: .topLeft, z: tileForegroundZ
-                ))
             }
         }
 
@@ -61,13 +68,62 @@ public enum RoomRenderer {
 
     // MARK: - Frame selection
 
-    /// The three sprite names a tile contributes.
+    /// One sprite a tile contributes: a frame name plus an offset within the tile's cell.
+    struct TilePart: Equatable {
+        var frame: String
+        var dx: Int = 0
+        var dy: Int = 0
+        var z: Int
+        /// Pixels cut from the top. Only gates use this.
+        var clipTop: Int = 0
+    }
+
+    /// The three sprite names a plain tile contributes.
     struct TileFrames: Equatable {
         var background: String
         /// The `<element>_<modifier>` child that space and floor tiles add to their back
         /// sprite. It carries the tile's actual variation.
         var backgroundDetail: String?
         var foreground: String
+    }
+
+    /// Every sprite a tile draws, in the reference's back/front layering.
+    ///
+    /// Gates are the exception to the three-sprite shape: they add a `<prefix>_gate` child to
+    /// the back and a `<prefix>_gate_fg` child at `(32, 16)` to the front, and those two are
+    /// what slide upward as the gate rises.
+    static func tileParts(
+        for tile: Tile,
+        level: LevelRuntime,
+        world: World?,
+        room: Int,
+        column: Int,
+        row: Int,
+        prefix: String
+    ) -> [TilePart] {
+        if tile.kind == .gate {
+            let ref = TileRef(room: room, x: column, y: row)
+            let gate = world?.gate(at: ref) ?? Gate(modifier: tile.modifier)
+            let clip = -gate.position
+
+            return [
+                TilePart(frame: "\(prefix)_4", z: tileBackgroundZ),
+                TilePart(frame: "\(prefix)_gate", z: tileBackgroundDetailZ, clipTop: clip),
+                TilePart(frame: "\(prefix)_4_fg", z: tileForegroundZ),
+                TilePart(frame: "\(prefix)_gate_fg", dx: 32, dy: 16,
+                         z: tileForegroundDetailZ, clipTop: clip),
+            ]
+        }
+
+        let frames = frames(
+            for: tile, level: level, room: room, column: column, row: row, prefix: prefix
+        )
+        var parts = [TilePart(frame: frames.background, z: tileBackgroundZ)]
+        if let detail = frames.backgroundDetail {
+            parts.append(TilePart(frame: detail, z: tileBackgroundDetailZ))
+        }
+        parts.append(TilePart(frame: frames.foreground, z: tileForegroundZ))
+        return parts
     }
 
     /// `LevelBuilder.buildTile`'s switch, reduced to the part that decides frame names.

@@ -154,7 +154,9 @@ Prince/                              ← workspace root
     │   │   ├── Sim/                 ✅ M3 — LevelRuntime, TilePredicates, Physics, FallCycle,
     │   │   │                           LCG, Ticker
     │   │   │                        ✅ M5 — cross-room tile lookup, room wrapping
-    │   │   │                           ⬜ M3c — checkBarrier, trob queries
+    │   │   │                        ✅ M7 — World, LevelState, Gate, Button, TileChecks
+    │   │   │                           ⬜ M7 — loose boards, spikes, choppers, potions, exit door
+    │   │   │                           ⬜ M3c — checkBarrier
     │   │   ├── Combat/              ⬜ M6 — Swordfight resolution
     │   │   ├── Tiles/               ⬜ M7 — Gate, Button, Loose, Chopper, Potion, Spikes, ExitDoor
     │   │   └── Resources/           ✅ M0 — 7.8 MB of game data, bundled HERE (not PoPHost) so
@@ -693,6 +695,72 @@ Two constraints:
    against `NSScreen.main.visibleFrame`). A window taller than the screen is a bug,
    so the CLI is clamped the same way the menu is.
 
+### 7.9.2 The interactive tile layer (trobs)
+
+`LevelRuntime` is the decoded level and never changes. `LevelState` is everything that does —
+gate positions, button presses, whether the exit opened. `World` pairs them and is what satisfies
+`TileWorld`, so the movement code and the VM ask one object for everything.
+
+The split matters: the level data stays cheap to share and `Sendable`, and a test can reset the
+world without reloading anything.
+
+#### A button's modifier is an event *index*
+
+```js
+Button.prototype.trigger = function (stuck) {
+  this.onPushed.dispatch(this.modifier, this.element, stuck);   // -> Level.fireEvent
+};
+
+Level.prototype.fireEvent = function (event, type, stuck) {
+  if (!this.events[event]) { return; }        // indexed directly, holes included
+  let x = (this.events[event].location - 1) % 10;
+  ...
+};
+```
+
+**The modifier indexes the events array; the `number` field on each entry is a separate label.**
+Level 1 confirms it: room 5's three buttons carry modifiers 8, 9 and 11, and events at those
+indices all sit in room 5 — which is exactly where the gates they raise are. Under the other
+reading one of them would have pointed at room 8.
+
+Level 1 also **uses chaining**: `events[9].next` is 1, so the raise button at x=4 opens the gate
+at (9,0) *and* the one at (5,0). A single-room puzzle that exercises both mechanisms.
+
+#### The gate
+
+`modifier` seeds **both** position and phase, which is how a level starts with a gate already
+open — room 5 has one of each:
+
+| modifier | phase | position | meaning |
+|---|---|---|---|
+| 0 | `closed` | 0 | shut |
+| 1 | `open` | −46 | already raised |
+
+`canCross(height)` is `|position| > height`. Motion is fixed-step: 47 pixels up, one per tick; a
+50-tick wait at the top; then down one pixel every fourth tick — or ten a tick when dropped.
+
+**`closedFast` is what makes a slammed gate stay shut.** A raise button re-fires with `stuck`
+while it is still held, and `raise(stuck:)` returns early when `closedFast && stuck`. A *fresh*
+press still works. That one flag is the difference between a gate you can hold open and one you
+cannot.
+
+#### Rendering a rising gate
+
+The reference crops the texture: `crop(new Rectangle(0, -posY, width, height + posY))`, and Phaser
+redraws the remainder at the sprite's origin — which both removes the top rows and slides the art
+up. That maps onto `SKTexture(rect:in:)` for free, because SK measures from the **bottom-left**:
+cutting rows off the top leaves the origin untouched and only shortens the rectangle. No y
+arithmetic, and no crop node.
+
+`SpriteInstance.clipTop` carries the amount, and the host resolves it because only the host knows
+a frame's pixel height.
+
+#### What is not here
+
+Loose boards, spikes, choppers, potions and the exit door all use the same `TileState` shape and
+are the remaining M7 work. `STUCK_BUTTON` is modelled but unused — M1 found the original levels
+never place one.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -932,6 +1000,10 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M7 | `LevelRuntime` immutable + `LevelState` mutable, paired by `World` | Keeps level data cheap to share and `Sendable`, and lets a test reset the world without reloading |
+| M7 | A button's `modifier` is an event **index**, not the entry's `number` | Level 1's room-5 buttons (modifiers 8, 9, 11) all resolve to room-5 events; the other reading points one of them at room 8 |
+| M7 | `Gate.actorPassageHeight` is a constant, not the live sprite height | The reference reads a frame-varying Phaser sprite (38–42); the DOS original used fixed cels, so a constant is arguably closer |
+| M7 | A rising gate is a top-clip, resolved by the host | Matches Phaser's crop exactly, and needs no y arithmetic because `SKTexture(rect:in:)` measures from the bottom-left |
 | M5 | `updateBlockPosition` takes the world, so room wrapping happens inside the VM | `CMD_FRAME` is the only caller of `updateBlockXY` in the reference; keeping it there preserves the ordering |
 | M5 | `charX` stays room-local across a transition | The reference shifts it by a whole room (140 x-units) and moves `baseX` by 320 px, so the two unit systems never mix |
 | M5 | Kid and Fighter keep separate `checkRoomChange` thresholds | The Kid fires at 189, the Fighter at 192. Tidying them into one would change when the Prince drops out of a room |

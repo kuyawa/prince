@@ -46,13 +46,24 @@ public struct SpriteInstance: Sendable, Equatable {
     /// Actors are mirrored by negating `charFace`; the host flips the texture.
     public var flippedHorizontally: Bool
 
+    /// How many pixels to cut from the TOP of the sprite.
+    ///
+    /// This is a rising gate. The reference crops the texture —
+    /// `crop(new Rectangle(0, -posY, width, height + posY))` — which both removes the top
+    /// `-posY` rows and slides the remaining art upward, since Phaser draws a cropped sprite at
+    /// its unslid origin. A sub-texture at the same position reproduces it exactly.
+    ///
+    /// The host resolves this, because only the host knows the frame's pixel height.
+    public var clipTop: Int
+
     public init(
         frameName: String,
         x: Int,
         y: Int,
         anchor: SpriteAnchor,
         z: Int,
-        flippedHorizontally: Bool = false
+        flippedHorizontally: Bool = false,
+        clipTop: Int = 0
     ) {
         self.frameName = frameName
         self.x = x
@@ -60,6 +71,7 @@ public struct SpriteInstance: Sendable, Equatable {
         self.anchor = anchor
         self.z = z
         self.flippedHorizontally = flippedHorizontally
+        self.clipTop = clipTop
     }
 }
 

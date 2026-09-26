@@ -16,7 +16,7 @@ public final class LevelScene: SKScene {
     /// constant is the whole of the flip.
     public static let roomTopY = CGFloat(Geometry.roomHeight)
 
-    private let level: LevelRuntime
+    private var world: World
     private let interpreter: SequenceInterpreter
     private let input: KeyboardInput
     private let background: TextureAtlas
@@ -38,13 +38,14 @@ public final class LevelScene: SKScene {
     private var sampledIntents: Intents { scriptedIntents ?? input.intents }
 
     public init(level: LevelRuntime, actor: ActorState, input: KeyboardInput) throws {
-        self.level = level
+        self.world = World(level)
         self.actor = actor
         self.input = input
         self.interpreter = SequenceInterpreter(
             table: try GameData.animationTable(named: actor.charName),
             actorClass: .kid
         )
+        let level = world.level
         self.background = try TextureAtlas(
             named: level.data.type == .dungeon ? "dungeon" : "palace"
         )
@@ -65,6 +66,9 @@ public final class LevelScene: SKScene {
 
     /// The simulated actor. Exposed read-only for diagnostics and tests.
     public var currentActor: ActorState { actor }
+
+    /// The world, including gate and button state.
+    public var currentWorld: World { world }
 
     public var currentRoom: Int { actor.room }
     public var currentAction: String { actor.action }
@@ -95,24 +99,32 @@ public final class LevelScene: SKScene {
     public func step() {
         effects.removeAll(keepingCapacity: true)
 
-        Behaviour.update(&actor, intents: sampledIntents, world: level)
-        try? interpreter.step(&actor, world: level, effects: &effects)
+        // `Kid.updateActor`'s order, as far as it is ported:
+        //   updateBehaviour, processCommand, updateAcceleration, updateVelocity,
+        //   ... checkButton, checkFloor, checkRoomChange
+        Behaviour.update(&actor, intents: sampledIntents, world: world)
+        try? interpreter.step(&actor, world: world, effects: &effects)
 
         Physics.accelerate(&actor)
         Physics.move(&actor)
 
-        // `checkFloor` in full: the standing branch can start a fall, the falling branch
-        // can end one. The two are mutually exclusive by action code.
+        TileChecks.checkButton(&actor, world: &world)
+
+        // `checkFloor` in full: the standing branch can start a fall, the falling branch can end
+        // one. The two are mutually exclusive by action code.
         try? FallCycle.checkFloorStanding(
-            &actor, world: level, interpreter: interpreter, effects: &effects
+            &actor, world: world, interpreter: interpreter, effects: &effects
         )
         if actor.actionCode == 3 || actor.actionCode == 4 {
             try? FallCycle.checkFall(
-                &actor, world: level, interpreter: interpreter, effects: &effects
+                &actor, world: world, interpreter: interpreter, effects: &effects
             )
         }
         // The Prince uses Kid's threshold (189), not the Fighter's (192).
-        FallCycle.checkRoomChange(&actor, world: level)
+        FallCycle.checkRoomChange(&actor, world: world)
+
+        // Gates and buttons advance once per simulation tick.
+        world.update()
 
         ticksRun += 1
     }
@@ -128,7 +140,7 @@ public final class LevelScene: SKScene {
     private func redraw() {
         spriteRoot.removeAllChildren()
 
-        let description = RoomRenderer.describe(level: level, room: actor.room, actors: [actor])
+        let description = RoomRenderer.describe(world: world, room: actor.room, actors: [actor])
         for sprite in description.sprites.sorted(by: { $0.z < $1.z }) {
             guard let node = makeNode(sprite) else { continue }
             spriteRoot.addChild(node)
@@ -138,7 +150,8 @@ public final class LevelScene: SKScene {
     private func makeNode(_ sprite: SpriteInstance) -> SKSpriteNode? {
         // Wall-shape frames ("SWS_9") carry no prefix of their own, so the atlas is
         // resolved by lookup rather than by parsing the name.
-        let texture = characters.texture(sprite.frameName) ?? background.texture(sprite.frameName)
+        let texture = characters.texture(sprite.frameName, clipTop: sprite.clipTop)
+            ?? background.texture(sprite.frameName, clipTop: sprite.clipTop)
         guard let texture else { return nil }
 
         let node = SKSpriteNode(texture: texture)
@@ -153,7 +166,7 @@ public final class LevelScene: SKScene {
 
     /// Frame names present in neither atlas, for diagnostics.
     public func missingFrames() -> [String] {
-        let description = RoomRenderer.describe(level: level, room: actor.room, actors: [actor])
+        let description = RoomRenderer.describe(world: world, room: actor.room, actors: [actor])
         return description.sprites
             .map(\.frameName)
             .filter { characters.texture($0) == nil && background.texture($0) == nil }

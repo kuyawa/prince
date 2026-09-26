@@ -73,6 +73,52 @@ public struct LevelRuntime: Sendable {
 
     public func placement(of room: Int) -> RoomPlacement? { placements[room] }
 
+    /// A tile by its flat index within a room, with no cross-room resolution.
+    public func tile(atIndex index: Int, room: Int) -> Tile {
+        guard let placement = placements[room],
+              (0..<Geometry.tilesPerRoom).contains(index)
+        else { return Self.offMapTile }
+        return placement.tiles[index]
+    }
+
+    /// Where a lookup actually landed, or `nil` when it fell off the map.
+    ///
+    /// `tile(x:y:room:)` throws this information away, but the interactive-tile layer needs it:
+    /// a gate a column past an edge belongs to the *neighbouring* room, and looking its state up
+    /// under the original room number would find nothing.
+    public func resolve(x: Int, y: Int, room: Int) -> TileRef? {
+        guard placements[room] != nil else { return nil }
+
+        var newRoom: Int
+        var newX = x
+        let newY: Int
+
+        let horizontal = roomX(room: room, x: x)
+        if horizontal.room > 0 {
+            newRoom = horizontal.room
+            newX = horizontal.x
+            let vertical = roomY(room: newRoom, y: y)
+            newRoom = vertical.room
+            newY = vertical.y
+        } else {
+            let vertical = roomY(room: room, y: y)
+            newRoom = vertical.room
+            newY = vertical.y
+            if vertical.room > 0 {
+                let second = roomX(room: newRoom, x: x)
+                newRoom = second.room
+                newX = second.x
+            }
+        }
+
+        guard newRoom > 0, placements[newRoom] != nil,
+              (0..<Geometry.roomColumns).contains(newX),
+              (0..<Geometry.roomRows).contains(newY)
+        else { return nil }
+
+        return TileRef(room: newRoom, x: newX, y: newY)
+    }
+
     public var roomNumbers: [Int] { placements.keys.sorted() }
 
     /// A tile, resolving across room edges exactly as `Level.js#getTileAt` does.

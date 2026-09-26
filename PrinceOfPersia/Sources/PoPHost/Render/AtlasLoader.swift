@@ -12,6 +12,10 @@ public struct TextureAtlas {
     public let imageSize: CGSize
     public let frameCount: Int
 
+    private let base: SKTexture
+    /// Frame rectangles exactly as the sheet declares them: origin at the TOP-left.
+    private let sourceRects: [String: Sheet.Rect]
+
     public enum LoadError: Error, CustomStringConvertible {
         case missingSheet(String)
         case unreadableImage(String)
@@ -66,10 +70,36 @@ public struct TextureAtlas {
         self.textures = textures
         self.imageSize = CGSize(width: width, height: height)
         self.frameCount = textures.count
+        self.base = base
+        self.sourceRects = sheet.frames.mapValues(\.frame)
     }
 
     public func texture(_ frameName: String) -> SKTexture? {
         textures[frameName]
+    }
+
+    /// A frame with its top `clipTop` pixels removed.
+    ///
+    /// This is how a rising gate is drawn: the reference crops the texture and Phaser redraws the
+    /// remainder at the sprite's origin, which slides the art up. Since `SKTexture(rect:in:)`
+    /// measures from the bottom-left, removing rows from the top leaves the origin untouched and
+    /// only shortens the rectangle — no y arithmetic needed.
+    public func texture(_ frameName: String, clipTop: Int) -> SKTexture? {
+        guard clipTop > 0 else { return textures[frameName] }
+        guard let source = sourceRects[frameName] else { return nil }
+
+        let visible = source.h - clipTop
+        guard visible > 0 else { return nil }
+
+        let rect = CGRect(
+            x: CGFloat(source.x) / imageSize.width,
+            y: (imageSize.height - CGFloat(source.y) - CGFloat(source.h)) / imageSize.height,
+            width: CGFloat(source.w) / imageSize.width,
+            height: CGFloat(visible) / imageSize.height
+        )
+        let clipped = SKTexture(rect: rect, in: base)
+        clipped.filteringMode = .nearest
+        return clipped
     }
 
     public var frameNames: [String] { Array(textures.keys) }

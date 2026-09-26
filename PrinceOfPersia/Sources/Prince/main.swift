@@ -15,20 +15,27 @@ import PoPHost
 /// Top-level code in `main.swift` is `@MainActor`, but a declared function is not, so the
 /// isolation has to be spelled out here.
 @MainActor
-func buildScene(levelNumber: Int, hold: Intents?) throws -> LevelScene {
+func buildScene(
+    levelNumber: Int,
+    hold: Intents?,
+    room override: Int? = nil,
+    location overrideLocation: Int? = nil
+) throws -> LevelScene {
     let level = try LevelRuntime(try GameData.level(levelNumber))
     let prince = level.data.prince
 
     // Game.js: `let turn = json.prince.turn !== false`, and when turning the Prince starts
     // facing the wrong way and turns into the correct one.
     var actor = ActorState(
-        location: prince.location,
-        room: prince.room,
+        location: overrideLocation ?? prince.location,
+        room: override ?? prince.room,
         face: prince.effectiveDirection,
         action: prince.shouldTurn ? "turn" : "stand",
         charName: "kid"
     )
     if prince.shouldTurn { actor.charX += 7 }
+    // A room override lands the actor on its floor rather than at the level's spawn height.
+    if override != nil { actor.updateBlockPosition() }
 
     let scene = try LevelScene(level: level, actor: actor, input: KeyboardInput())
     scene.scriptedIntents = hold
@@ -63,7 +70,12 @@ app.setActivationPolicy(.regular)
 
 let scene: LevelScene
 do {
-    scene = try buildScene(levelNumber: levelNumber, hold: hold)
+    scene = try buildScene(
+        levelNumber: levelNumber,
+        hold: hold,
+        room: value(for: "--room", in: arguments).flatMap(Int.init),
+        location: value(for: "--location", in: arguments).flatMap(Int.init)
+    )
 } catch {
     FileHandle.standardError.write(Data("Failed to build the level: \(error)\n".utf8))
     exit(1)

@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M6 — combat and guards** |
-| **Last completed** | **M5 — room traversal.** 125 tests pass. The Prince walks between rooms |
+| **Current milestone** | **M7 — mechanisms** *(gates, buttons, events done)* |
+| **Last completed** | **M7a — gates, buttons and events.** 145 tests pass. Gates open and close |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M6 combat and guards, or M3c fidelity. Both unblocked |
+| **Next action** | M7b (loose boards, spikes, exit door), or M6 combat. Both unblocked |
 
 ---
 
@@ -196,6 +196,31 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 
 - [ ] **Not done:** `guards{}`/`events{}` loading (waits on M6 combat and M7 trobs), and
       "level 1 traversable end to end" still needs `checkBarrier` and the exit door
+
+### M7 — Hazards and mechanisms *(partially complete)*
+**Done (M7a):**
+- [x] `LevelState` + `World` — the immutable level paired with its mutable state
+- [x] **`Gate`** — the full state machine: 47-pixel raise, 50-tick wait, 1px/4-tick close,
+      10px/tick slam, and `closedFast` so a held button cannot re-raise a slammed gate
+- [x] **`Button`** — push, step timers, raise/drop/stuck variants
+- [x] **`fireEvent`** with chaining; level 1's raise button opens two gates through it
+- [x] `TileChecks.prepareCheckFloor` and `checkButton`
+- [x] `gateBlocks` wired to real state — **the stub is gone**; gates now open
+- [x] Gate rendering via `SpriteInstance.clipTop`, verified on screen
+
+**Found:**
+- **A button's `modifier` is a 0-based INDEX into the events array**, not the entry's `number`.
+  Level 1's room-5 buttons (modifiers 8, 9, 11) all resolve to room-5 events, which is where the
+  gates are. The other reading points one of them at room 8.
+- `Gate.raise` from `fastDropping` does **not** cancel the slam — the reference's guard excludes
+  that state. Reproduced rather than tidied, and pinned by a test.
+- I omitted `checkButton`'s `actionCode` guard on the first pass, so a *falling* actor pressed
+  buttons. A test caught it.
+
+**Still open (M7b):**
+- [ ] Loose boards (`Loose.js`), spikes, choppers, potions, and the exit door
+- [ ] `checkSpikes`, `checkChoppers`, and `checkFloor`'s hazard branches
+- [ ] `checkBarrier` is still M3c, and still blocks "level 1 traversable end to end"
 
 ### M6 — Combat and guards
 - [ ] `Guard` with skill tables from `Enemy.js` — transcribe all twelve columns verbatim
