@@ -1,0 +1,14 @@
+{
+  "program": [
+    { "i": "ADD_OBJECT", "p1": 0, "p2": 2, "p3": 152, "p4": 141 },
+    { "i": "START_OBJECT", "p1": 0 },
+    { "i": "START", "p1": 0 },
+    { "i": "WAIT", "p1": 5 },
+    { "i": "MUSIC", "p2": "TragicEnd" },
+    { "i": "FADEIN", "p1": 20 },
+    { "i": "WAIT", "p1": 120 },
+    { "i": "FADEOUT", "p1": 20 },
+    { "i": "WAIT", "p1": 30 },
+    { "i": "END", "p1": 0 }
+  ]
+}

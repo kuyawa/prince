@@ -1,19 +1,58 @@
-# Research clones — ~86 MB, reproducible from GitHub at any time.
+# ---------------------------------------------------------------------------
+# Not part of the project
+# ---------------------------------------------------------------------------
+
+# The three reference clones: PrinceJS (the port source), SDLPoP (the behavioural
+# oracle) and Mechner's Apple II source. Together about 86 MB, all of it
+# reproducible from GitHub or from princeofpersia.sourceforge.net at any time.
+# ARCHITECTURE.md section 2 says where each one comes from and why.
 reference/
 
-# SwiftPM
-.build/
+# SwiftPM build products. `swift build` regenerates all of this.
+PrinceOfPersia/.build/
+PrinceOfPersia/.swiftpm/
 .swiftpm/
-Package.resolved
 
-# `Scripts/make-app.sh` output — 9 MB of bundle, rebuilt in twenty seconds.
-build/
+# ---------------------------------------------------------------------------
+# macOS droppings
+# ---------------------------------------------------------------------------
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
 
-# Xcode
+# ---------------------------------------------------------------------------
+# Editors and IDEs
+# ---------------------------------------------------------------------------
 *.xcodeproj
 *.xcworkspace
 xcuserdata/
+*.xcuserstate
 DerivedData/
+.idea/
+*.swp
+*~
 
-# macOS
-.DS_Store
+# ---------------------------------------------------------------------------
+# Local junk
+# ---------------------------------------------------------------------------
+*.log
+*.tmp
+HANDOFF.md
+
+# ---------------------------------------------------------------------------
+# Deliberately NOT ignored
+# ---------------------------------------------------------------------------
+#
+#   build/    The assembled Prince of Persia.app is committed, so the game can be
+#             run by cloning and double-clicking. It is a generated artifact:
+#             Scripts/make-app.sh rebuilds it in about twenty seconds, and every
+#             rebuild shows up as a large diff in the binary.
+#
+#   *.png     Screenshots. webshot.png is the one the README shows; more are
+#             welcome alongside it and in screenshots/.
+#
