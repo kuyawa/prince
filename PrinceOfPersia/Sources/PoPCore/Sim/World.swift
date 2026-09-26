@@ -7,10 +7,36 @@ public struct World: Sendable {
     public let level: LevelRuntime
     public private(set) var state: LevelState
 
-    public init(_ level: LevelRuntime) {
+    /// Every actor in the level. **Index 0 is always the Prince.**
+    ///
+    /// Combat has to address an opponent, and the reference does it with a direct object
+    /// reference. In a value-type simulation the index is the equivalent, and fixing the Prince
+    /// at zero keeps the common case cheap.
+    public internal(set) var actors: [ActorState]
+
+    /// The shared generator. It lives in the world so that a seed reproduces a whole run,
+    /// including every guard decision.
+    public internal(set) var rng: LCG
+
+    /// The player's chosen difficulty, 0–100. Scales every guard probability.
+    public var strength: Int
+
+    public init(_ level: LevelRuntime, seed: Int = 0, strength: Int = 100) {
         self.level = level
         self.state = LevelState(level)
+        self.rng = LCG(seed: seed)
+        self.strength = strength
+
+        var list = [ActorState.prince(from: level.data.prince)]
+        for spawn in level.data.guards {
+            list.append(ActorState.enemy(from: spawn, levelNumber: level.data.number))
+        }
+        self.actors = list
     }
+
+    public var prince: ActorState { actors[0] }
+    public var enemies: [ActorState] { Array(actors.dropFirst()) }
+    public var livingEnemies: [ActorState] { actors.dropFirst().filter(\.isAlive) }
 
     /// One tick of the interactive tiles. Call once per simulation tick, after the actor has
     /// been stepped.
@@ -32,6 +58,11 @@ public struct World: Sendable {
     /// `Loose.shake(true)` — disturb a board without standing on it.
     public mutating func shakeLooseBoard(at ref: TileRef) {
         state.shakeLooseBoard(at: ref)
+    }
+
+    /// Draws from the shared generator.
+    public mutating func random(below max: Int) -> Int {
+        rng.next(upperBound: max)
     }
 
     public func gate(at ref: TileRef) -> Gate? { state.gate(at: ref) }

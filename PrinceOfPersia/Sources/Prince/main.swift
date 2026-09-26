@@ -18,26 +18,35 @@ import PoPHost
 func buildScene(
     levelNumber: Int,
     hold: Intents?,
+    seed: Int,
     room override: Int? = nil,
     location overrideLocation: Int? = nil
 ) throws -> LevelScene {
-    let level = try LevelRuntime(try GameData.level(levelNumber))
-    let prince = level.data.prince
+    var level = try GameData.level(levelNumber)
 
-    // Game.js: `let turn = json.prince.turn !== false`, and when turning the Prince starts
-    // facing the wrong way and turns into the correct one.
-    var actor = ActorState(
-        location: overrideLocation ?? prince.location,
-        room: override ?? prince.room,
-        face: prince.effectiveDirection,
-        action: prince.shouldTurn ? "turn" : "stand",
-        charName: "kid"
+    // A room or location override moves the Prince's spawn, which is what `--room` and
+    // `--location` are for. The guards and their positions stay as the level defines them.
+    if override != nil || overrideLocation != nil {
+        let prince = level.prince
+        let moved = PrinceSpawn(
+            location: overrideLocation ?? prince.location,
+            room: override ?? prince.room,
+            direction: prince.direction,
+            offset: prince.offset,
+            turn: prince.turn,
+            cameraRoom: prince.cameraRoom,
+            bias: prince.bias,
+            reverse: prince.reverse,
+            sword: prince.sword,
+            danger: prince.danger,
+            specialEvents: prince.specialEvents
+        )
+        level = level.replacingPrince(moved)
+    }
+
+    let scene = try LevelScene(
+        level: try LevelRuntime(level), input: KeyboardInput(), seed: seed
     )
-    if prince.shouldTurn { actor.charX += 7 }
-    // A room override lands the actor on its floor rather than at the level's spawn height.
-    if override != nil { actor.updateBlockPosition() }
-
-    let scene = try LevelScene(level: level, actor: actor, input: KeyboardInput())
     scene.scriptedIntents = hold
     return scene
 }
@@ -73,6 +82,7 @@ do {
     scene = try buildScene(
         levelNumber: levelNumber,
         hold: hold,
+        seed: value(for: "--seed", in: arguments).flatMap(Int.init) ?? 0,
         room: value(for: "--room", in: arguments).flatMap(Int.init),
         location: value(for: "--location", in: arguments).flatMap(Int.init)
     )
@@ -117,14 +127,20 @@ if let frameName = value(for: "--dump-frame", in: arguments),
 }
 
 if arguments.contains("--trace") {
-    print("tick action           frame  x   y   bx by code fcheck food")
-    for tick in 1...30 {
+    let ticks = value(for: "--ticks", in: arguments).flatMap(Int.init) ?? 30
+    print("tick  actor        action           frame   x    y  bx by  hp  op")
+    for tick in 1...ticks {
         scene.step()
-        let a = scene.currentActor
-        print(String(format: "%4d %-16@ %5d %3d %3d %2d %2d %4d %6d %5d",
-                     tick, a.action as NSString, a.charFrame, a.charX, a.charY,
-                     a.charBlockX, a.charBlockY, a.actionCode,
-                     a.charFcheck ? 1 : 0, a.charFood ? 1 : 0))
+        let world = scene.currentWorld
+        for (index, a) in world.actors.enumerated() {
+            let opponent = index == 0
+                ? scene.opponentDescription()
+                : "prince"
+            print(String(format: "%4d  %-11@  %-16@ %5d %4d %4d %2d %2d %3d  %@",
+                         tick, a.charName as NSString, a.action as NSString,
+                         a.charFrame, a.charX, a.charY, a.charBlockX, a.charBlockY,
+                         a.health, opponent as NSString))
+        }
     }
     fflush(stdout)
     exit(0)

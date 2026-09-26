@@ -154,6 +154,7 @@ Prince/                              ← workspace root
     │   │   │                           ⬜ M6b — guards loaded from the level and drawn
     │   │   ├── Sim/                 ✅ M3 — LevelRuntime, TilePredicates, Physics, FallCycle,
     │   │   │                           LCG, Ticker
+    │   │   │                        ✅ M6b — Simulation (the tick), actors in World
     │   │   │                        ✅ M5 — cross-room tile lookup, room wrapping
     │   │   │                        ✅ M7 — World, LevelState, Gate, Button, ExitDoor,
     │   │   │                           LooseBoard, TileChecks
@@ -855,6 +856,48 @@ between the fighters measured from `centerX` — the same Phaser sprite geometry
 still owes (open question 11). A guard may therefore engage through a thin barrier the original
 would have stopped at.
 
+### 7.9.4 Actors in the world
+
+`Simulation` owns the tick. It lives in `PoPCore`, not in the scene, because it is game logic:
+a duel can be driven headlessly, and `LevelScene` shrinks to keyboard sampling, a fixed timestep,
+and drawing.
+
+`World` holds the actors and the generator. **Index 0 is always the Prince.** Combat has to name
+an opponent, and the reference uses a direct object reference; in a value-type simulation an index
+is the equivalent, and pinning the Prince at zero keeps the common case cheap.
+
+**Actor order.** The reference creates the guards *before* the Prince (`Game.js` builds every
+`Enemy`, then `this.kid`), and updates them in that order. The port keeps the Prince at index 0
+for lookup but still ticks the guards first, because the order decides which of two simultaneous
+events lands first and matching costs nothing.
+
+**Opponents are simplified.** The reference sets `this.opponent` when a fight begins and the two
+reference each other. Here a guard always faces the Prince, and the Prince faces the nearest living
+guard in his room — the same pairing in every non-combat case, differing only when three or more
+fighters converge.
+
+#### Which table an actor reads
+
+`Enemy`'s constructor passes an `animKey` to `Fighter`:
+
+```js
+PrinceJS.Fighter.call(this, game, level, location, direction, room, key,
+                       key === "shadow" ? "shadow" : "fighter");
+```
+
+So every guard, fat guard, skeleton and Jaffar reads `fighter.json`; only the shadow reads
+`shadow.json`; and each draws from a **sprite atlas named for its own `charName`**. A plain
+`"guard"` becomes `"guard-<colour>"` at construction, so a level's `colors` field selects the
+sheet.
+
+#### One gap worth knowing
+
+**`shadow.json` and `vizier.json` have no frame 0** — their frames start at 1. `ActorState`
+begins at `charFrame = 0`, so a shadow's very first frame is not a real sprite. It is never
+displayed in practice, because the first `CMD_FRAME` replaces it before anything is drawn, and
+`makeNode` returns nil for a missing texture exactly as Phaser renders nothing for a missing
+frame. Levels 4, 5, 6 and 12 contain shadows; level 13 Jaffar.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1102,6 +1145,9 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M6b | `Simulation` owns the tick, in `PoPCore` rather than the scene | It is game logic; keeping it here means a duel runs headlessly and the scene has no rules in it |
+| M6b | The Prince is fixed at actor index 0 | Combat must name an opponent; an index is the value-type equivalent of the reference's object reference |
+| M6b | Actors are copied out of the array between steps | Assigning through `world.actors[i]` while handing `world` to a function is an exclusivity violation; the copy is the honest fix |
 | M6 | Guard AI uses the LCG already ported for wall patterns | SDLPoP's `prandom` is the same generator; PrinceJS's is clock-seeded and not replayable |
 | M6 | `damageLife` calls `die` at one health rather than reaching zero | The reference picks `stabkill` vs `stabbed` by testing `health === 0` after damage |
 | M6 | Combat verbs stay frame-gated, with no responsiveness smoothing | The animation is the state machine; loosening it would change how the game plays |

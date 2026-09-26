@@ -28,6 +28,37 @@ public struct LevelData: Sendable, Decodable {
         case rooms = "room"
     }
 
+    public init(
+        number: Int,
+        name: String,
+        size: RoomGridSize,
+        type: LevelType,
+        rooms: [RoomData],
+        guards: [GuardSpawn],
+        events: [EventTrigger?],
+        prince: PrinceSpawn
+    ) {
+        self.number = number
+        self.name = name
+        self.size = size
+        self.type = type
+        self.rooms = rooms
+        self.guards = guards
+        self.events = events
+        self.prince = prince
+    }
+
+    /// A copy of this level with a different Prince spawn.
+    ///
+    /// Used by `--room` / `--location` so a developer can drop into any room without editing
+    /// the level data.
+    public func replacingPrince(_ spawn: PrinceSpawn) -> LevelData {
+        LevelData(
+            number: number, name: name, size: size, type: type,
+            rooms: rooms, guards: guards, events: events, prince: spawn
+        )
+    }
+
     /// The event with a given `number`, ignoring array position.
     public func event(number: Int) -> EventTrigger? {
         events.compactMap { $0 }.first { $0.number == number }
@@ -224,6 +255,32 @@ public struct PrinceSpawn: Sendable, Decodable, Equatable {
     public let sword: Bool?
     public let danger: Bool?
     public let specialEvents: Bool?
+
+    public init(
+        location: Int,
+        room: Int,
+        direction: Int,
+        offset: Int? = nil,
+        turn: Bool? = nil,
+        cameraRoom: Int? = nil,
+        bias: Int? = nil,
+        reverse: Int? = nil,
+        sword: Bool? = nil,
+        danger: Bool? = nil,
+        specialEvents: Bool? = nil
+    ) {
+        self.location = location
+        self.room = room
+        self.direction = direction
+        self.offset = offset
+        self.turn = turn
+        self.cameraRoom = cameraRoom
+        self.bias = bias
+        self.reverse = reverse
+        self.sword = sword
+        self.danger = danger
+        self.specialEvents = specialEvents
+    }
 
     /// `Game.js`: `let turn = json.prince.turn !== false;` — absent means true.
     public var shouldTurn: Bool { turn ?? true }

@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M6b — guards in the level** *(or M7c hazards)* |
-| **Last completed** | **M6a — sword fighting and the guard AI.** 179 tests pass |
+| **Current milestone** | **M7c — spikes, choppers, potions** |
+| **Last completed** | **M6b — guards in the level.** 195 tests pass. Guards notice, draw and advance |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M6b: load `guards{}` into the world and draw them. Then M7c |
+| **Next action** | M7c hazards, or M6c (sword overlay, health pips, level chaining) |
 
 ---
 
@@ -263,12 +263,29 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - The animation **is** the state machine: every verb is frame-gated, and a strike on any
   non-strike frame does nothing at all.
 
-**Still open (M6b):**
-- [ ] Load `guards{}` from the level into the world; guards are not yet instantiated
-- [ ] An actor list in `World`, so combat addresses opponents by index rather than by two
-      `inout` parameters
-- [ ] Guard rendering, the sword overlay, and the colour tints
-- [ ] `checkFight`'s "turn to face" arm is wired but no guard is spawned to exercise it in game
+**Done (M6b):**
+- [x] **`Simulation`** — the tick moved into `PoPCore`, so a duel runs with no window
+- [x] **Actors in `World`** — the Prince at index 0, guards after; the shared RNG lives there too
+- [x] **Guards spawned from `guards{}`** — `charName` from type and colour, skill, health,
+      direction, and the `active`/`visible`/`sneak` flags
+- [x] **Guards rendered**, each from its own sprite atlas
+- [x] Verified in game: the guard in room 21 draws, then advances, closing from distance 48
+      to 16 while the Prince runs at him
+
+**Found:**
+- **`shadow.json` and `vizier.json` have no frame 0** — frames start at 1. `ActorState` begins at
+  `charFrame = 0`, so a shadow's initial frame is not a real sprite. Never displayed in practice
+  (the first `CMD_FRAME` replaces it), and `makeNode` returns nil for a missing texture just as
+  Phaser renders nothing. Pinned by a test.
+- Swift's exclusivity rules forbid assigning through `world.actors[i]` while handing `world` to
+  a function, so the tick copies each actor out and back. The copy is the honest fix.
+
+**Still open (M6c):**
+- [ ] The sword overlay sprite (frames are in the `sword` atlas, already loaded)
+- [ ] Guard colour tints from `GuardSpawn.colors`
+- [ ] Health pips and the rest of the UI
+- [ ] `NEXTLEVEL` fires but nothing consumes it — no level chaining
+- [ ] The dying animation and the splash
 - [ ] `canReachOpponent` is **simplified** — the reference walks a tile path measured from
       `centerX` (open question 11)
 
