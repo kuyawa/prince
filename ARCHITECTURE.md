@@ -478,6 +478,28 @@ public struct RenderDescription: Sendable {
 testable without a window, and what would let you swap SpriteKit for Metal later without
 touching game logic.
 
+### 7.9.1 Window scale
+
+Window scale is a **presentation-only** setting (`WindowScale`, in `PoPHost`). It is the
+one value in this project that is genuinely free to change:
+
+- **CLI:** `swift run Prince --scale 4` → 1280 × 800
+- **Runtime:** the **View** menu, **Cmd-1** through **Cmd-N**
+- **Default:** 2× (640 × 400), mirroring `SCALE_FACTOR` from PrinceJS `Boot.js`
+
+Because `PoPCore` works exclusively in the original 320 × 200 pixel units and the renderer
+scales at the last possible moment, changing this **cannot** affect gameplay, timing or
+collision. If a future change makes the scale leak into `PoPCore`, that is a Law 8
+violation, not a feature request.
+
+Two constraints:
+
+1. **Integer multiples only.** A fractional scale lands the 32 × 63 tile grid on
+   non-integer device pixels and the art shimmers.
+2. **Only scales that fit the display are offered** (`WindowScale.fitting`, measured
+   against `NSScreen.main.visibleFrame`). A window taller than the screen is a bug,
+   so the CLI is clamped the same way the menu is.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -620,4 +642,5 @@ Where to look when you have a question. Keep this table current.
 | — | SwiftPM first, Xcode project later | Sub-second headless test loop over the risky part |
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
+| M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
 | M0 | Exclude `maps/custom/` and `assets/web/` from the bundle | 212 third-party levels and 18 MB of website graphics are not part of the game |

@@ -1,42 +1,22 @@
 import AppKit
-import SpriteKit
 import PoPCore
 import PoPHost
 
-// M0 entry point: open a window at an integer multiple of the original
-// 320 x 200 playfield and present the placeholder scene.
+// Entry point.
 //
-// ARCHITECTURE.md Law 4: the simulation is driven by a fixed timestep, never by
-// vsync. There is no simulation yet — when there is, it will be stepped from
-// SKScene.update(_:) with an accumulator, not from a display link.
-
-let scale = CGFloat(Geometry.scaleFactor)
-let playfield = CGSize(width: CGFloat(Geometry.screenWidth),
-                       height: CGFloat(Geometry.screenHeight))
-let windowSize = CGSize(width: playfield.width * scale,
-                        height: playfield.height * scale)
+// The window scale is a launch option and a menu command, never a compile-time
+// decision: `swift run Prince --scale 4` gives a 1280 x 800 window.
+//
+// ARCHITECTURE.md Law 4: the simulation will be driven by a fixed timestep from
+// SKScene.update(_:) with an accumulator, never by vsync. There is no simulation
+// yet; when there is, the window scale will not be visible to it.
 
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 
-let window = NSWindow(
-    contentRect: NSRect(origin: .zero, size: windowSize),
-    styleMask: [.titled, .closable, .miniaturizable],
-    backing: .buffered,
-    defer: false
-)
-window.title = "Prince of Persia"
+let controller = WindowController(initialScale: WindowScale.scale(from: CommandLine.arguments))
+app.mainMenu = MainMenu.build(controller: controller)
 
-let view = SKView(frame: NSRect(origin: .zero, size: windowSize))
-view.preferredFramesPerSecond = 60
-view.ignoresSiblingOrder = true
-
-let scene = GameScene(size: playfield)
-view.presentScene(scene)
-
-window.contentView = view
-window.center()
-window.makeKeyAndOrderFront(nil)
-
+controller.showWindow(nil)
 app.activate(ignoringOtherApps: true)
 app.run()

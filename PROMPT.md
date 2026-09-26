@@ -78,6 +78,9 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
       the 32 × 63 tile shape is visible. `filteringMode = .nearest` deferred to M4 — there are
       no textures to filter yet.
 - [x] Confirm: `swift test` passes (4/4) and `swift run Prince` opens the window
+- [x] Bonus: window scale is a **runtime switch** — `--scale N`, plus a View menu
+      (Cmd-1..Cmd-N), capped to what fits the display. Nothing in `PoPCore` can see it.
+      See `ARCHITECTURE.md` §7.9.1.
 
 ### M1 — Data layer
 - [ ] `LevelData`, `RoomData`, `Tile`, `GuardSpawn`, `EventTrigger`, `PrinceSpawn` as `Codable` + `Sendable`
