@@ -24,6 +24,14 @@ public enum ActorEffect: Sendable, Equatable {
     /// The fourth potion turned the screen upside down. Purely presentational.
     case flipScreen
 
+    /// The hourglass ran out.
+    ///
+    /// The reference sends the player to level 16 — a cutscene — which is not ported (see
+    /// `ARCHITECTURE.md` §10, question 5). The effect is emitted anyway, and the host ends the
+    /// run, which is the part of the reference’s behaviour that survives the cutscenes being
+    /// missing.
+    case timeUp
+
     /// `Level.removeObject` — a potion drunk or a sword taken leaves plain floor behind.
     case removedObject(TileRef)
 

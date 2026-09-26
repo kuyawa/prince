@@ -415,6 +415,12 @@ public enum Combat {
         } else {
             f.beginAction("stabbed")
         }
+
+        // The reference calls `showSplash` here as well as inside `damageLife`, and the second
+        // call matters for the one path that does not go through it: an unarmed Prince, killed by
+        // `die` outright. `stabkill` is not one of the four self-bloodying actions, so the pool
+        // appears.
+        Splash.show(&f)
     }
 
     /// `Fighter.die`.
@@ -451,8 +457,14 @@ public enum Combat {
     ///
     /// At one health left it does not decrement — it calls `die`, which is what actually takes
     /// the last point.
-    public static func damageLife(_ f: inout ActorState, effects: inout [ActorEffect]) {
+    public static func damageLife(
+        _ f: inout ActorState, crouching: Bool = false, effects: inout [ActorEffect]
+    ) {
         guard f.isAlive, f.charName != "skeleton" else { return }
+        // Before the action is touched. Splash.show refuses the four death animations, and this
+        // blow may be the one about to start one. `crouching` is the medium landing, which draws
+        // the pool five units higher.
+        Splash.show(&f, crouching: crouching)
         if f.health > 1 {
             f.health -= 1
         } else {

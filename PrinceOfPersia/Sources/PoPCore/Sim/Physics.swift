@@ -343,16 +343,20 @@ public enum FallCycle {
             case 0, 1:
                 effects.append(.sound(.softLanding))
                 state.beginAction("stand")
+
             case 2:
+                // `Kid.land` sets the action *then* calls `damageLife(true)` — the flag is what
+                // draws the splash five units higher, as if he went down on one knee. The order
+                // matters: `showSplash` refuses a death animation, and the action has to be
+                // `medland` at that point, not `dropdead`.
                 effects.append(.sound(.mediumLandingOof))
                 state.beginAction("medland")
-                // A medium landing hurts.
-                state.health = max(0, state.health - 1)
+                Combat.damageLife(&state, crouching: true, effects: &effects)
+
             default:
-                // Landed on through too many floors: fatal.
+                // Landed on through too many floors.
                 effects.append(.sound(.freeFallLand))
-                state.isAlive = false
-                effects.append(.died)
+                Combat.die(&state, action: "falldead", effects: &effects)
             }
         }
         try interpreter.step(&state, world: world, effects: &effects)

@@ -359,6 +359,23 @@ public enum RoomRenderer {
             flippedHorizontally: actor.charFace == -1
         )]
 
+        // `Fighter`'s constructor adds the splash as a *child* of the actor, anchored bottom-left
+        // like its parent and offset (-6, -15). So it inherits the actor's flip — which is why it
+        // is drawn with the same `flippedHorizontally`, and why a mirror-image Prince bleeds on the
+        // other side. Its frame comes from the `general` atlas, not the actor's own.
+        if actor.isSplashVisible {
+            sprites.append(SpriteInstance(
+                frameName: Splash.frameName(for: actor),
+                x: x + Splash.offsetX,
+                y: y + actor.splashOffsetY,
+                anchor: .bottomLeft,
+                z: actorZ,
+                flippedHorizontally: actor.charFace == -1,
+                atlas: "general",
+                tint: actor.splashTint
+            ))
+        }
+
         // `Fighter.updateSwordPosition` — the overlay is its own sprite, drawn just above the
         // actor. Note there is no `swordDrawn` test: whether the frame carries an `fsword` *is*
         // the sword-drawn state, so a frame without one shows no blade however the flag reads.

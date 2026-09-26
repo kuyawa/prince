@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M6d — the presentation leftovers** |
-| **Last completed** | **Ledges — `tryGrabEdge`, `grab`, `checkLedgeSwing`.** 304 tests pass |
-| **Blocked on** | nothing. **Every subsystem in `ARCHITECTURE.md` now exists** |
+| **Current milestone** | **M9 — polish** |
+| **Last completed** | **M6d — the splash, the hourglass, and the `action` setter bug.** 317 tests pass |
+| **Blocked on** | nothing. Every subsystem exists and no simplification remains |
 | **Open questions** | 8, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M6d: the time-up hand-off, the death splash, the shadow overlay. Then M9 polish |
+| **Next action** | M9: `.app` bundle, icon, keybinding config, distribution. Or the last handful of M6d leftovers below |
 
 ---
 
@@ -425,11 +425,34 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
   the thud every tick, which is a buzz rather than a bump.
 
 **Still open (M6d):**
-- [ ] The **time-up** hand-off: `timeUp` is detected but the host does not yet end the run
-- [ ] The dying animation's splash sprite, and the shadow overlay
-- [x] **`canReachOpponent`** is the real path walk (M3c) — two passes over the columns between the
-      fighters, with the `below` variant dropping a row through a gap. It was the last simplification
-      in the port
+**Done (M6d):**
+- [x] **The splash** — shown for two ticks on a wound, suppressed for the four self-bloodying
+      deaths, tinted for guards, drawn five units higher for a crouching hit
+- [x] **The time-up hand-off** — `ActorEffect.timeUp`, and the host stops the run
+- [x] **The medium landing**, which was silently broken (see below)
+
+**Found — and this is the one that matters:**
+- **`ActorState.action` was a stored property.** In the reference, assigning it rewinds the
+  sequence cursor. `startFall` was the one place that assigned `action` without going through
+  `beginAction`, so it resumed the new sequence mid-way and a `stepfall` skipped its own `ACT 3`.
+  The cascade: `actionCode` stayed 0 → `checkFloor` took its *standing* branch → it called
+  `startFall` again every tick → which zeroed `fallingBlocks` every tick. **Medium landings never
+  happened and no fall ever did damage**, from M2 to M6d. Fixed by making the setter do the reset,
+  not by patching `startFall`.
+- **`Kid.land`'s medium landing was inlined as `health -= 1`.** The reference calls `damageLife(true)`,
+  which calls `die` at one health. A Prince on his last life was landing, dropping to zero health,
+  and carrying on alive.
+- **`die` does not show a splash.** Only the `DIE` opcode, `stabbed` and `damageLife` do — putting it
+  in `die` makes a spike death bleed onto the spikes.
+- **The splash order matters**: `showSplash` is called *before* the action changes, because it
+  refuses the four self-bloodying death animations.
+- **Sixty minutes is 43,200 ticks**, not 3,600. And the final minute reads `remainingMinutes == 1`,
+  which is why the bar switches to a seconds readout for it.
+
+**Still open (small):**
+- [ ] **The shadow overlay** — level 5/6 only, and it needs a mirror-merge effect that is not ported
+- [ ] **`floorStopFall`** — a board landing and becoming debris is not modelled (visual only)
+- [ ] **Cutscenes** (open question 5) — the title screen, the level 1 prologue, the ending
 **Done (ledges):**
 - [x] **`tryGrabEdge`** — the two probes, the reach asymmetry, and the fall-length and tapestry
       exclusions

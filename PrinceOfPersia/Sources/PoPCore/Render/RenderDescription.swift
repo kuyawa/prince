@@ -64,6 +64,10 @@ public struct SpriteInstance: Sendable, Equatable {
     /// (`game.make.sprite(25, yy, "general")`), which belongs to no tile and no actor.
     public var atlas: String?
 
+    /// An `0xRRGGBB` tint, applied by the host as a colour blend. A guard's splash is drawn in
+    /// his own colours; everything else is untinted.
+    public var tint: Int?
+
     public init(
         frameName: String,
         x: Int,
@@ -72,7 +76,8 @@ public struct SpriteInstance: Sendable, Equatable {
         z: Int,
         flippedHorizontally: Bool = false,
         clipTop: Int = 0,
-        atlas: String? = nil
+        atlas: String? = nil,
+        tint: Int? = nil
     ) {
         self.frameName = frameName
         self.x = x
@@ -82,6 +87,7 @@ public struct SpriteInstance: Sendable, Equatable {
         self.flippedHorizontally = flippedHorizontally
         self.clipTop = clipTop
         self.atlas = atlas
+        self.tint = tint
     }
 }
 

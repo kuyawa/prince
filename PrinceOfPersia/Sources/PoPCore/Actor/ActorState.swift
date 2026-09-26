@@ -13,10 +13,52 @@ public struct ActorState: Sendable, Equatable {
     // MARK: - The program
 
     /// The sequence currently executing. Named `action` in the reference.
-    public var action: String
+    ///
+    /// **Assigning it rewinds the cursor**, because that is what the reference does:
+    ///
+    /// ```js
+    /// Object.defineProperty(PrinceJS.Actor.prototype, "action", {
+    ///   get: function () { return this._action; },
+    ///   set: function (value) { this._action = value; this._seqpointer = 0; },
+    /// });
+    /// ```
+    ///
+    /// This was a stored property for most of the port, and `beginAction` reset the cursor by
+    /// hand. That worked everywhere except the one place that assigned `action` **without** going
+    /// through `beginAction` — `startFall` — which resumed the new sequence from wherever the old
+    /// one had left the cursor. The effect was subtle and wide: a `stepfall` started from a
+    /// `stand` skipped its own `ACT 3`, so `actionCode` stayed 0, so `checkFloor` took the
+    /// *standing* branch, so it called `startFall` again on the next tick, which reset
+    /// `fallingBlocks` — and a two-floor drop never counted as a medium landing.
+    ///
+    /// Making the setter do the reset removes the whole class of bug rather than the instance.
+    /// `GOTO` is the one opcode that bypasses it, and has its own entry point for that.
+    public var action: String {
+        get { storedAction }
+        set {
+            storedAction = newValue
+            sequencePointer = 0
+        }
+    }
+
+    /// The backing store. Only `CMD_GOTO` reads or writes it directly.
+    var storedAction: String
 
     /// Cursor into the current sequence. `_seqpointer` in the reference.
     public var sequencePointer: Int
+
+    /// `CMD_GOTO`'s assignment, which deliberately bypasses the setter:
+    ///
+    /// ```js
+    /// CMD_GOTO: function (data) { this._action = data.p1; this._seqpointer = data.p2 - 1; }
+    /// ```
+    ///
+    /// Going through the setter here would restart every `GOTO` from the top of its target
+    /// sequence and loop forever.
+    public mutating func assignActionDirectly(_ name: String, pointer: Int) {
+        storedAction = name
+        sequencePointer = pointer
+    }
 
     /// Set `true` by `step` and cleared by `CMD_FRAME`. The dispatch loop spins on it.
     public var isProcessing: Bool
@@ -170,6 +212,18 @@ public struct ActorState: Sendable, Equatable {
     /// ground ahead before committing.
     public var charRepeat: Bool
 
+    /// `splash.visible` — the small pool of blood under a fighter who has just been hit.
+    ///
+    /// It is a separate sprite from the actor, anchored to the actor's own bottom-left, which is
+    /// why it moves with him and why `splashOffsetY` exists: a crouching hit draws it higher.
+    public var isSplashVisible: Bool
+    /// `splashTimer` — two ticks, then it fades out.
+    public var splashTimer: Int
+    /// `splash.y` relative to the actor's anchor: -15, or -5 for a crouching hit.
+    public var splashOffsetY: Int
+    /// `Enemy` tints the splash once, at construction, from the guard's colour. `nil` for the kid.
+    public var splashTint: Int?
+
     /// Half-units of sideways drift from `checkLedgeSwing`.
     ///
     /// The reference adds **1.5** to `charX` on every tick of a swing, which makes `charX`
@@ -211,7 +265,7 @@ public struct ActorState: Sendable, Equatable {
         let blockY = location / 10
 
         self.charName = charName
-        self.action = action
+        self.storedAction = action
         self.sequencePointer = 0
         self.isProcessing = false
 
@@ -272,6 +326,10 @@ public struct ActorState: Sendable, Equatable {
         self.allowBlock = true
         self.allowStrike = true
         self.charRepeat = false
+        self.isSplashVisible = false
+        self.splashTimer = 0
+        self.splashOffsetY = Splash.restingOffsetY
+        self.splashTint = nil
         self.ledgeSwing = 0
         self.ledgeSwingHalves = 0
         self.grabWaitTicks = 0
@@ -294,8 +352,9 @@ public struct ActorState: Sendable, Equatable {
     /// `_seqpointer` directly. That distinction is load-bearing: using the setter in
     /// `GOTO` would restart every sequence from the top and loop forever.
     public mutating func beginAction(_ name: String) {
+        // The setter already rewinds the cursor; leaving this here would hide the fact that it
+        // does, and the next person to add a verb would wonder which one to use.
         action = name
-        sequencePointer = 0
     }
 
     /// `Actor.frameID` — is the current frame this one, or within this range?

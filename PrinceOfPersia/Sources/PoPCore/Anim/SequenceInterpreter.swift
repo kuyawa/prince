@@ -157,8 +157,7 @@ public struct SequenceInterpreter: Sendable {
             guard let destination = instruction.p2 else {
                 throw Failure.goToWithoutDestination(state.action)
             }
-            state.action = target
-            state.sequencePointer = destination - 1
+            state.assignActionDirectly(target, pointer: destination - 1)
 
         case .changeX:
             state.charX += (instruction.p1?.intValue ?? 0) * state.charFace
@@ -182,6 +181,7 @@ public struct SequenceInterpreter: Sendable {
             state.charYVel = instruction.p2 ?? 0
 
         case .die:
+            Splash.show(&state)
             state.isAlive = false
             state.swordDrawn = false
             effects.append(.died)

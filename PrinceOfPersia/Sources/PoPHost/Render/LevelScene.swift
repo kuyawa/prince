@@ -56,12 +56,20 @@ public final class LevelScene: SKScene {
     /// Music the simulation asked for. Kept separate from `onSound` so the host can loop it.
     public var onMusic: ((PoPCore.MusicTrack) -> Void)?
 
+    /// The hourglass ran out. Fires once.
+    public var onTimeUp: (() -> Void)?
+
     /// Fires once, the first time a level's opening cue should play. Levels 2 and up re-use the
     /// Danger theme, so the coordinator needs to know that a level *started*, not just which one.
     public var onLevelStarted: ((_ level: Int, _ danger: Bool) -> Void)?
 
     private var hasReportedFinish = false
     private var hasReportedStart = false
+    /// Set when the hourglass empties. The scene stops ticking — there is nothing left to play.
+    private var hasTimedOut = false
+
+    /// Whether the run is over for want of time.
+    public var isTimedOut: Bool { hasTimedOut }
 
     public init(
         level: LevelRuntime,
@@ -136,6 +144,8 @@ public final class LevelScene: SKScene {
     // MARK: - Time
 
     public override func update(_ currentTime: TimeInterval) {
+        guard !hasTimedOut else { return }
+
         let elapsed = lastUpdateTime.map { currentTime - $0 } ?? 0
         lastUpdateTime = currentTime
 
@@ -165,6 +175,10 @@ public final class LevelScene: SKScene {
             switch effect {
             case let .sound(sound): onSound?(sound)
             case let .music(track): onMusic?(track)
+            case .timeUp:
+                guard !hasTimedOut else { break }
+                hasTimedOut = true
+                onTimeUp?()
             default: break
             }
         }
@@ -269,6 +283,15 @@ public final class LevelScene: SKScene {
         node.position = CGPoint(x: CGFloat(sprite.x), y: Self.roomTopY - CGFloat(sprite.y))
         node.zPosition = CGFloat(sprite.z)
         if sprite.flippedHorizontally { node.xScale = -1 }
+        if let tint = sprite.tint {
+            node.color = SKColor(
+                red: CGFloat((tint >> 16) & 0xff) / 255,
+                green: CGFloat((tint >> 8) & 0xff) / 255,
+                blue: CGFloat(tint & 0xff) / 255,
+                alpha: 1
+            )
+            node.colorBlendFactor = 1
+        }
         return node
     }
 

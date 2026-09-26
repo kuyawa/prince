@@ -1337,6 +1337,85 @@ same substitution the potion delay uses.
 Level 1 room 12, walking right off the ledge at column 4 with the action key held: he falls, catches
 the ledge at tick 18, and the loose board above him shakes — because column 2's row 0 *is* a loose
 board. That is the level-1 opening, which the port could not previously play.
+### 7.9.12 The `action` setter, and the bug it hid
+
+The most consequential single fix in the port, and it was found by chasing something cosmetic.
+
+```js
+Object.defineProperty(PrinceJS.Actor.prototype, "action", {
+  get: function () { return this._action; },
+  set: function (value) { this._action = value; this._seqpointer = 0; },
+});
+});
+```
+
+**Assigning `action` rewinds the sequence cursor.** The port had it as a stored property, with
+`beginAction` resetting the cursor by hand. That is equivalent everywhere except the one place that
+assigned `action` *without* going through `beginAction`: `startFall`.
+
+So a fall started from a `stand` resumed the `stepfall` sequence from wherever `stand` had left the
+cursor — skipping the `ACT 3` at its head. The cascade from that one skipped instruction:
+
+1. `actionCode` stayed 0, because `ACT` is what sets it.
+2. `checkFloor` therefore took its *standing* branch, whose guard is `actionCode in {0,1,5,7}`.
+3. That branch found space under him, called `startFall` again — every tick of the fall.
+4. `startFall` does `fallingBlocks = Math.min(0, fallingBlocks)`, so the count was zeroed every
+   tick and a two-floor drop never reached the `fallingBlocks === 2` that makes a medium landing.
+
+**What that cost, silently:** gravity never applied during a `stepfall` (it needs `actionCode` 4,
+and freefall did set it — which is why falls still looked roughly right), medium landings never
+happened, and no fall ever did damage.
+
+The fix is to make the setter do the reset, exactly as the reference does, rather than to patch
+`startFall`. `GOTO` is the single opcode that deliberately bypasses the setter — going through it
+would restart every jump from the top of its target and loop forever — and it now has its own
+entry point saying so.
+
+#### The lesson worth keeping
+
+A stored property that *looks* like the reference’s but does not carry its side effect is worse
+than a missing feature, because it works almost everywhere. This one survived from M2 to M6d.
+
+### 7.9.13 The splash, and the order of two statements
+
+```js
+showSplash: function () {
+  if (this.charName === "skeleton") { return; }
+  if (["dropdead", "falldead", "impale", "halve"].includes(this.action)) { return; }
+  this.splash.visible = true;
+  this.splashTimer = 2;
+}
+```
+
+Those four actions draw their own gore — impaling and halving in particular — so the pool stands
+down for them. Which means the *order* of the calls is load-bearing: `damageLife` calls
+`showSplash()` **before** it sets the action, so the blow that causes a death animation still shows
+a pool. Set the action first and the last hit of every fight loses its splash. `CMD_DIE` is the same.
+
+`die` itself does **not** show one — only the `DIE` opcode, `stabbed` and `damageLife` do. Putting
+it in `die` is the obvious mistake, and it makes a spike death bleed onto the spikes.
+
+The splash is a *child* of the actor sprite, anchored bottom-left and offset `(-6, -15)`, so it
+inherits the actor’s flip and a mirror-image Prince bleeds on the other side. `-5` instead of `-15`
+for a hit taken while crouching, which is what the medium landing uses.
+
+#### And the medium landing was wrong
+
+`Kid.land` calls `damageLife(true)` for a two-floor drop. The port had inlined a bare
+`health -= 1`, which is not the same thing: `damageLife` calls `die` at one health. A Prince with a
+single life left was landing, dropping to zero health, and **carrying on alive**.
+
+### 7.9.14 The hourglass running out
+
+`Interface.showRegularRemainingTime` raises `timeUp` at zero minutes, and `Game.timeUp` sends the
+player to level 16 — a cutscene, which is not ported (open question 5). The port emits
+`ActorEffect.timeUp` and the host ends the run, which is the part of the reference’s behaviour that
+survives the cutscenes being missing. The scene stops ticking, so the last frame stays on screen.
+
+Two arithmetic notes. Sixty minutes is **43,200 ticks** of 1/12 s, not 3,600 — getting that wrong
+empties the hourglass after five minutes. And the final minute reads `remainingMinutes == 1`, not 0:
+the countdown reaches zero only on the same tick that expires it, which is exactly why the bar
+switches to a seconds readout for that minute.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1585,6 +1664,12 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M6d | `ActorState.action` is a computed property whose setter rewinds `sequencePointer` | That is what the reference’s `action` setter does. As a stored property it worked everywhere except `startFall`, which skipped a `stepfall`’s `ACT 3` and cascaded into `actionCode`, `checkFloor` and `fallingBlocks` |
+| M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |
+| M6d | `Splash.show` is called before the action changes | `showSplash` refuses the four self-bloodying death animations, so the order decides whether a killing blow bleeds |
+| M6d | `die` does not show a splash | Only the `DIE` opcode, `stabbed` and `damageLife` do. Putting it in `die` makes a spike death bleed onto the spikes |
+| M6d | The medium landing calls `damageLife`, not a bare `health -= 1` | `damageLife` calls `die` at one health; the inlined version left a Prince at zero health and alive |
+| M6d | `timeUp` ends the run rather than going to level 16 | Level 16 is a cutscene, and cutscenes are not ported. The effect and the handling are both real; only the destination differs |
 | Ledge | `tryGrabEdge` is two probes, front (reach 30) then overhead (reach 20) | The second catches a Prince who has drifted past the edge and is falling down its face |
 | Ledge | `charX` stays `Int`; the fractional swing is carried in `ledgeSwingHalves` | `checkLedgeSwing` adds 1.5 a tick, the only fractional `charX` in the engine. Carrying the half reproduces the whole units exactly |
 | Ledge | `grabWait` counts six ticks rather than reading a clock | The same substitution as the potion delay: 500 ms at 1/12 s |

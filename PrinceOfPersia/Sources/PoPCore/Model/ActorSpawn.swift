@@ -54,6 +54,12 @@ public extension ActorState {
         actor.isActive = spawn.active ?? true
         actor.isVisible = spawn.visible ?? true
         actor.sneakUp = spawn.sneak ?? true
+        // `Enemy`'s constructor tints the splash once, from the guard's own colour. The table is
+        // `Enemy.COLOR`, which lives with the HUD because the HUD was its first consumer.
+        if spawn.colors > 0 {
+            let index = min(spawn.colors - 1, HudRenderer.guardColors.count - 1)
+            Splash.tint(&actor, colour: HudRenderer.guardColors[index])
+        }
         actor.hasStartedFight = false
         return actor
     }

@@ -147,7 +147,11 @@ public struct Simulation: Sendable {
         applyDuePotions()
         world.advanceFloatTimers()
 
+        // The hourglass. Set once, on the tick it runs out.
+        let wasExpired = clock.hasExpired
         clock.advance()
+        if clock.hasExpired, !wasExpired { effects.append(.timeUp) }
+
         ticksInLevel += 1
     }
 
@@ -156,6 +160,15 @@ public struct Simulation: Sendable {
         HudRenderer.describe(
             world: world, clock: clock, ticksInLevel: ticksInLevel, font: font
         )
+    }
+
+    /// Runs the hourglass forward without running the level.
+    ///
+    /// A seam: sixty minutes is 43,200 ticks, which is too many to play out for one assertion.
+    /// The effect itself is still produced by `tick`, so this changes *when* the hourglass is
+    /// read, not how.
+    public mutating func advanceClock(ticks: Int) {
+        for _ in 0..<ticks { clock.advance() }
     }
 
     /// Runs `count` ticks with the same input, for headless tests and screenshots.
@@ -172,6 +185,9 @@ public struct Simulation: Sendable {
     /// is an exclusivity violation in Swift, and the copy is the honest fix rather than an
     /// escape hatch.
     private mutating func step(actorAt index: Int, intents: Intents) {
+        // `updateSplash` is the first thing `updateActor` does.
+        Splash.update(&world.actors[index])
+
         // `Kid.updateTimer` — the bump sound's rate limit, and the half-second after a grab
         // during which the ledge cannot be climbed.
         if world.actors[index].bumpTimer > 0 { world.actors[index].bumpTimer -= 1 }

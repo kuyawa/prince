@@ -73,6 +73,9 @@ public final class GameCoordinator {
         scene.onMusic = { [weak self] track in
             self?.audio.playMusic(track)
         }
+        scene.onTimeUp = { [weak self] in
+            self?.runTimedOut()
+        }
         scene.onLevelStarted = { [weak self] level, danger in
             self?.levelStarted(level, danger: danger)
         }
@@ -95,6 +98,16 @@ public final class GameCoordinator {
     /// Presents the level and hands the scene back to the caller to put in a window.
     public func present() {
         view.presentScene(scene)
+    }
+
+    /// The hourglass ran out.
+    ///
+    /// The reference plays a cutscene on level 16; there is no cutscene here, so the run simply
+    /// ends. The scene has already stopped ticking, which leaves the last frame on screen.
+    private func runTimedOut() {
+        audio.stopMusic()
+        print("[Prince] time up — the hourglass is empty, sixty minutes gone")
+        fflush(stdout)
     }
 
     private func levelFinished(_ completed: Int, health: Int, maxHealth: Int) {
