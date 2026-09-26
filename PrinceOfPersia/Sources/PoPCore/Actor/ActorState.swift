@@ -77,6 +77,13 @@ public struct ActorState: Sendable, Equatable {
     /// Read by `IFWTLESS` (247) to choose a floating variant of the current action.
     public var isInFloat: Bool
 
+    /// Set by `checkFloor`'s fall branch. Used by `checkBarrier` (remaining M3 work).
+    public var isInFallDown: Bool
+
+    /// How many loose boards the actor has fallen through. 0 or 1 is survivable;
+    /// more is fatal on landing (`Fighter.land`).
+    public var fallingBlocks: Int
+
     // MARK: - Init
 
     /// Places an actor at a spawn location.
@@ -122,6 +129,8 @@ public struct ActorState: Sendable, Equatable {
         self.isAlive = true
         self.swordDrawn = false
         self.isInFloat = false
+        self.isInFallDown = false
+        self.fallingBlocks = 0
     }
 
     // MARK: - Reference semantics

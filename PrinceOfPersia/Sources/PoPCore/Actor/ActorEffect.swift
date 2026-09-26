@@ -39,7 +39,9 @@ public enum ActorEffect: Sendable, Equatable {
 /// actor *and* consults the level, and the reference guards that lookup with
 /// `if (this.level.rooms[this.room])` — so a `nil` world is a faithful stand-in and
 /// makes the opcode a no-op exactly as it is for an actor standing in a gap.
-public protocol ActorWorldQuery: AnyObject {
+/// A value type, not a class: the world is immutable during a tick, so the simulation
+/// can hold it cheaply and stay `Sendable`.
+public protocol ActorWorldQuery: Sendable {
     /// `level.rooms[room]?.links`, or `nil` when the room does not exist.
     func roomLinks(_ room: Int) -> RoomLinks?
 }

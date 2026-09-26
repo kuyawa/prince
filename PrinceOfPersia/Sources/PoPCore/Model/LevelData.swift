@@ -146,6 +146,11 @@ public struct Tile: Sendable, Decodable, Equatable {
         case kind = "element"
         case modifier
     }
+
+    public init(kind: TileKind, modifier: Int) {
+        self.kind = kind
+        self.modifier = modifier
+    }
 }
 
 /// A guard placed in the level.
