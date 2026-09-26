@@ -144,14 +144,26 @@ private func levelOne() throws -> LevelRuntime {
     let sprite = try #require(sprites.first)
     #expect(sprite.frameName == "kid-15")
     #expect(sprite.anchor == .bottomLeft, "Actor's constructor does anchor.setTo(0, 1)")
-    #expect(!sprite.flippedHorizontally)
+    #expect(sprite.flippedHorizontally, "he faces right, and the art faces left")
 }
 
-@Test func facingLeftFlipsTheActor() {
-    var actor = ActorState(location: 11, room: 1, face: -1, charName: "kid")
-    actor.charFrame = 45
-    let sprite = try? #require(RoomRenderer.describe(actor).first)
-    #expect(sprite?.flippedHorizontally == true)
+@Test func facingRightIsTheMirroredCaseNotFacingLeft() {
+    // `Actor`'s constructor does `this.scale.x *= -charFace`. That is 1 for a left-facing actor
+    // and -1 for a right-facing one, so **the artwork is drawn facing left** and facing right is
+    // what mirrors it.
+    //
+    // The port had this inverted for the whole project. Four tests asserted the inverted rule,
+    // which is why it survived: they were consistent with the code rather than with the game. On
+    // screen it read as the Prince walking backwards in both directions.
+    var left = ActorState(location: 11, room: 1, face: -1, charName: "kid")
+    left.charFrame = 45
+    let facingLeft = try? #require(RoomRenderer.describe(left).first)
+    #expect(facingLeft?.flippedHorizontally == false, "left is the art as drawn")
+
+    var right = ActorState(location: 11, room: 1, face: 1, charName: "kid")
+    right.charFrame = 45
+    let facingRight = try? #require(RoomRenderer.describe(right).first)
+    #expect(facingRight?.flippedHorizontally == true, "right is the mirror")
 }
 
 @Test func theHalfPixelParityCorrectionOnlyReachesTheRenderer() {

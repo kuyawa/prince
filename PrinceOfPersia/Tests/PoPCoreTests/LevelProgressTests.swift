@@ -153,13 +153,14 @@ private func simulationAtTheOpenExit() throws -> Simulation {
     #expect(blade.y == body.y + actor.swordDy)
     #expect(blade.anchor == .bottomLeft)
 
-    // Facing left mirrors it — and the body moves too, because the half-pixel parity correction
-    // depends on facing. Re-read both rather than reusing the right-facing positions.
-    actor.charFace = -1
+    // The blade is mirrored when the actor is, and the art faces left, so it is the right-facing
+    // case that mirrors. The body moves too, because the half-pixel parity correction depends on
+    // facing — re-read both rather than reusing the left-facing positions.
+    actor.charFace = 1
     let mirroredSprites = RoomRenderer.describe(actor)
     let mirrored = try #require(mirroredSprites.first { $0.z == RoomRenderer.swordZ })
     let mirroredBody = try #require(mirroredSprites.first { $0.z == RoomRenderer.actorZ })
     #expect(mirrored.flippedHorizontally)
     #expect(mirroredBody.flippedHorizontally)
-    #expect(mirrored.x == mirroredBody.x + actor.swordDx * -1)
+    #expect(mirrored.x == mirroredBody.x + actor.swordDx * 1)
 }

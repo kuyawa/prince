@@ -282,6 +282,13 @@ public final class LevelScene: SKScene {
             : CGPoint(x: 0, y: 0)
         node.position = CGPoint(x: CGFloat(sprite.x), y: Self.roomTopY - CGFloat(sprite.y))
         node.zPosition = CGFloat(sprite.z)
+
+        // Mirrored about the anchor, which is exactly what Phaser does: the transform scales
+        // first and the image is then drawn from its own origin, so a right-facing sprite
+        // occupies `[x - width, x]` in both engines. `Fighter.getCharBounds` subtracts
+        // `width - 5` when facing right for precisely that reason, so the drawing and the
+        // collision already agree — no shift is needed, and adding one puts the sprite a
+        // cel-width away from where the game thinks he is.
         if sprite.flippedHorizontally { node.xScale = -1 }
         if let tint = sprite.tint {
             node.color = SKColor(

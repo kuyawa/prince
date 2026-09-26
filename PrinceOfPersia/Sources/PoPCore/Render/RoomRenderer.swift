@@ -331,6 +331,17 @@ public enum RoomRenderer {
 
     /// `Actor.updateCharPosition`.
     ///
+    /// **The art faces left, so facing right is the mirrored case.** `Actor`'s constructor does
+    /// `this.scale.x *= -charFace`, which is 1 for a left-facing actor and -1 for a right-facing
+    /// one. The port had this the other way round, and a Prince who walks backwards is exactly
+    /// what that looks like.
+    ///
+    /// The mirror is about the sprite's anchor, so the box a right-facing actor occupies is
+    /// `[x - width, x]` rather than `[x, x + width]`. That is not an accident to be corrected:
+    /// `Fighter.getCharBounds` subtracts `width - 5` when facing right for precisely that reason,
+    /// and the port's `charBounds` does the same. Moving the sprite would put the drawing and the
+    /// collision out of step.
+    ///
     /// ```js
     /// let tempx = this.charX + this.charFdx * this.charFace;
     /// if ((this.charFood && this.faceL()) || (!this.charFood && this.faceR())) tempx += 0.5;
@@ -356,7 +367,7 @@ public enum RoomRenderer {
             x: x, y: y,
             anchor: .bottomLeft,
             z: actorZ,
-            flippedHorizontally: actor.charFace == -1
+            flippedHorizontally: actor.charFace == 1
         )]
 
         // `Fighter`'s constructor adds the splash as a *child* of the actor, anchored bottom-left
@@ -370,7 +381,7 @@ public enum RoomRenderer {
                 y: y + actor.splashOffsetY,
                 anchor: .bottomLeft,
                 z: actorZ,
-                flippedHorizontally: actor.charFace == -1,
+                flippedHorizontally: actor.charFace == 1,
                 atlas: "general",
                 tint: actor.splashTint
             ))
@@ -386,7 +397,7 @@ public enum RoomRenderer {
                 y: y + actor.swordDy,
                 anchor: .bottomLeft,
                 z: swordZ,
-                flippedHorizontally: actor.charFace == -1
+                flippedHorizontally: actor.charFace == 1
             ))
         }
         return sprites

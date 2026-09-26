@@ -1427,6 +1427,50 @@ Two arithmetic notes. Sixty minutes is **43,200 ticks** of 1/12 s, not 3,600 —
 empties the hourglass after five minutes. And the final minute reads `remainingMinutes == 1`, not 0:
 the countdown reaches zero only on the same tick that expires it, which is exactly why the bar
 switches to a seconds readout for that minute.
+### 7.15 Which way the artwork faces
+
+```js
+// Actor's constructor
+this.scale.x *= -charFace;
+this.anchor.setTo(0, 1);
+```
+
+**The artwork is drawn facing left.** `scale.x` is 1 for a left-facing actor and -1 for a
+right-facing one, so facing *right* is the mirrored case. `Fighter` says the same thing again for
+the sword, `this.sword.scale.x *= -this.charFace`.
+
+The port had this inverted for the whole project — `flippedHorizontally: actor.charFace == -1` —
+for the actor, the sword and the splash alike. On screen it read as **the Prince walking
+backwards**: press right and he travels right while drawn facing left; press left and he travels
+left while drawn facing right. Both directions wrong, which is what made it look like a movement
+bug rather than a drawing one.
+
+#### Why it survived so long
+
+**Four tests asserted the inverted rule.** `facingLeftFlipsTheActor`, `theSwordDrawsAboveTheActor…`
+and two others encoded `charFace == -1` as the mirrored case, so the suite agreed with the code
+instead of with the game. A test that restates the implementation cannot catch the implementation
+being wrong; these now assert the reference’s rule *and* explain where it comes from.
+
+#### And a second correction that was not needed
+
+Chasing it, I convinced myself that SpriteKit and Phaser mirror differently — that Phaser places a
+mirrored sprite at `[x - width, x]` while SpriteKit keeps it at `[x, x + width]` — and added a
+compensating shift. That was wrong, and the measurement said so plainly once it was read
+carefully:
+
+```
+pixels differing from background, box [x-w, x):  41.9%    <- the sprite is here
+pixels differing from background, box [x, x+w):   0.0%
+```
+
+Both engines mirror about the anchor and put a right-facing sprite in `[x - width, x]`. That is
+also what `Fighter.getCharBounds` assumes when it subtracts `width - 5` for a right-facing actor,
+so the drawing and the collision already agreed. The shift was reverted.
+
+The method is worth keeping, though: two renders that differ only in where the Prince stands, and
+a difference against the second as the background, locates a sprite to the pixel. It is how the
+`[x - width, x]` placement was established rather than assumed.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1825,6 +1869,7 @@ Where to look when you have a question. Keep this table current.
 | M6d | `die` does not show a splash | Only the `DIE` opcode, `stabbed` and `damageLife` do. Putting it in `die` makes a spike death bleed onto the spikes |
 | M6d | The medium landing calls `damageLife`, not a bare `health -= 1` | `damageLife` calls `die` at one health; the inlined version left a Prince at zero health and alive |
 | M6d | `timeUp` ends the run rather than going to level 16 | Level 16 is a cutscene, and cutscenes are not ported. The effect and the handling are both real; only the destination differs |
+| — | The artwork faces left, so facing *right* is the mirrored case | `Actor`’s constructor does `scale.x *= -charFace`. The port had it inverted, which read as the Prince walking backwards in both directions |
 | Ledge | `tryGrabEdge` is two probes, front (reach 30) then overhead (reach 20) | The second catches a Prince who has drifted past the edge and is falling down its face |
 | Ledge | `charX` stays `Int`; the fractional swing is carried in `ledgeSwingHalves` | `checkLedgeSwing` adds 1.5 a tick, the only fractional `charX` in the engine. Carrying the half reproduces the whole units exactly |
 | Ledge | `grabWait` counts six ticks rather than reading a clock | The same substitution as the potion delay: 500 ms at 1/12 s |
