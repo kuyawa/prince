@@ -136,15 +136,142 @@ public enum Combat {
             || (abs(o.charX - f.charX) <= 70 && abs(o.charY - f.charY) <= 70)
     }
 
-    /// `Fighter.canReachOpponent` — **simplified.**
+    /// `Fighter.canReachOpponent` — the real one, not a distance test.
     ///
-    /// The reference walks a tile path between the fighters, measuring from `centerX`. That is
-    /// screen geometry, so this keeps the distance test and drops the path walk.
+    /// Two passes. The first asks whether there is a **clear line at all** — nothing but walkable,
+    /// barrier-free tiles between them — and if so a plain distance check settles it. The second
+    /// walks the columns again asking whether he could actually *stand* on each in turn, which is
+    /// what a fighter closing for a swordfight needs to know.
+    ///
+    /// The `below` variant lets the path drop one row through a gap, which is how a guard on a
+    /// ledge notices a Prince on the floor below him.
+    ///
+    /// **This was the last simplification in the port.** It was waiting on `centerX`, which is
+    /// screen geometry, which is `SpriteMetrics`.
     public static func canReachOpponent(
-        _ f: ActorState, _ o: ActorState, world: any TileWorld, below: Bool = false
+        _ f: ActorState, _ o: ActorState, world: any TileWorld,
+        below: Bool = false, turn: Bool = false
     ) -> Bool {
         guard canSeeOpponent(f, o, world: world, below: below) else { return false }
-        return abs(opponentDistance(f, o, world: world)) < 40
+        let faceSign = turn ? -1 : 1
+
+        // Pass one: is the corridor between them clear?
+        let clear = checkPathToOpponent(
+            f, o, world: world, from: f.charBlockX, blockY: f.charBlockY, room: f.room
+        ) { x, y, room in
+            let tile = world.tile(x: x, y: y, room: room)
+            let tileF = world.tile(x: x + f.charFace * faceSign, y: y, room: f.room)
+            let crossable = Behaviour.canCrossGate(
+                f, world: world, x: x, y: y, tile: tile, walk: true, turn: turn
+            )
+            return (crossable && !(tile.kind.isBarrierWalk || tileF.kind.isBarrierWalk), false)
+        }
+        if clear, abs(opponentDistance(f, o, world: world)) < 40 { return true }
+
+        // Pass two: could he stand his way along it?
+        return checkPathToOpponent(
+            f, o, world: world, from: f.charBlockX, blockY: f.charBlockY, room: f.room
+        ) { x, y, room in
+            if canWalkOnTile(f, o, world: world, x: x, y: y, room: room, turn: turn) {
+                return (true, false)
+            }
+            let tile = world.tile(x: x, y: y, room: room)
+            if below, tile.kind == .space, y < Geometry.roomRows - 1, o.charBlockY == y + 1 {
+                let reachable = checkPathToOpponent(
+                    f, o, world: world, from: x, blockY: y + 1, room: room
+                ) { x2, y2, room2 in
+                    (canWalkOnTile(f, o, world: world, x: x2, y: y2, room: room2, turn: turn), false)
+                }
+                return (reachable, true)
+            }
+            return (false, false)
+        }
+    }
+
+    /// `Fighter.standsOnTile` — is this tile the one his feet are on?
+    ///
+    /// The reference compares tile *object identity* with `===`, which over a grid of shared tiles
+    /// means the same position, not merely an equal tile.
+    public static func standsOnTile(_ f: ActorState, x: Int, y: Int, room: Int) -> Bool {
+        x == f.charBlockX && y == f.charBlockY && room == f.room
+    }
+
+    /// `Fighter.canWalkOnTile` — can he *stand* here, as opposed to merely pass through?
+    ///
+    /// The chopper case is the interesting one: he may walk onto a blade only facing right, and
+    /// only when both he and his opponent are already past the blade’s origin. That is what stops a
+    /// fighter stepping into the slicer to escape one.
+    public static func canWalkOnTile(
+        _ f: ActorState, _ o: ActorState, world: any TileWorld,
+        x: Int, y: Int, room: Int, turn: Bool = false
+    ) -> Bool {
+        let tile = world.tile(x: x, y: y, room: room)
+        guard Behaviour.canCrossGate(
+            f, world: world, x: x, y: y, tile: tile, walk: true, turn: turn
+        ) else { return false }
+
+        if tile.kind == .chopper {
+            guard f.charFace == 1 else { return false }
+            let edge = x * Geometry.blockWidth + 15
+            return f.spriteX() > edge && o.spriteX() > edge
+        }
+        return tile.kind.isSafeWalkable || standsOnTile(f, x: x, y: y, room: room)
+    }
+
+    /// `Fighter.checkPathToOpponent` — walk the columns between the two fighters, asking a question
+    /// about each.
+    ///
+    /// Returns `true` only if the callback said yes at *every* column. Crosses room boundaries by
+    /// wrapping through `links`, and the `+ 10` widening when the opponent is in another room is
+    /// what lets a guard at a doorway reach into the next room.
+    static func checkPathToOpponent(
+        _ f: ActorState,
+        _ o: ActorState,
+        world: any TileWorld,
+        from startX: Int,
+        blockY: Int,
+        room: Int,
+        _ callback: (Int, Int, Int) -> (value: Bool, stop: Bool)
+    ) -> Bool {
+        let sameRoom = room == o.room
+        var maxX = o.charBlockX + (sameRoom ? 0 : 10)
+        var minX = o.charBlockX - (sameRoom ? 0 : 10)
+        if isHanging(o) {
+            if o.charFace == 1 { maxX += 1 } else if o.charFace == -1 { minX -= 1 }
+        }
+
+        var column = startX
+        var currentRoom = room
+
+        if f.centerX() <= o.centerX() {
+            if column > maxX { column = maxX }
+            while column <= maxX {
+                if column == Geometry.roomColumns {
+                    guard let links = world.roomLinks(currentRoom), links.right > 0 else {
+                        return false
+                    }
+                    currentRoom = links.right
+                }
+                let result = callback(column % Geometry.roomColumns, blockY, currentRoom)
+                if !result.value || result.stop { return result.value }
+                column += 1
+            }
+        } else {
+            if column < minX { column = minX }
+            while column >= minX {
+                if column == -1 {
+                    guard let links = world.roomLinks(currentRoom), links.left > 0 else {
+                        return false
+                    }
+                    currentRoom = links.left
+                }
+                let wrapped = (Geometry.roomColumns + column) % Geometry.roomColumns
+                let result = callback(wrapped, blockY, currentRoom)
+                if !result.value || result.stop { return result.value }
+                column -= 1
+            }
+        }
+        return true
     }
 
     /// `Fighter.sneaks` — actions that count as moving quietly, so a guard will not react.

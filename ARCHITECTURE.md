@@ -1265,6 +1265,13 @@ yet.
 Open question 11 is closed. `checkBarrier` is implemented, the `step` verb’s chopper and mirror
 branches are in, and the two stubs in `Behaviour` that said "needs `checkBarrier`" are gone.
 
+**And it took `canReachOpponent` with it.** That was the last *simplification* in the port — a
+distance test standing in for `checkPathToOpponent`, which walks the columns between the two
+fighters asking a question about each. It measured from `centerX`, so it was blocked on the same
+geometry, and it is now the real thing: two passes, one asking whether the corridor is clear and one
+asking whether a fighter could stand his way along it, with the `below` variant letting the path
+drop a row through a gap.
+
 What it leaves is the ledge system — `tryGrabEdge`, `checkLedgeSwing`, the `jumphang*` verbs —
 which now has everything it needs and has simply not been written.
 
@@ -1516,6 +1523,8 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M3c | `canReachOpponent` is the real path walk, not a distance test | `SpriteMetrics` unblocked it along with `checkBarrier`. A guard can no longer engage through a wall the original would have stopped at |
+| M3c | `checkPathToOpponent` keeps the reference’s `+ 10` widening for a cross-room opponent | It is what lets a guard at a doorway reach into the next room; without it guards never notice a Prince in the next room |
 | M3c | `checkBarrier` is transcribed screen geometry over cel sizes, not a physics model | Every rectangle in it comes from measured cels; trying to re-derive it in engine units was the mistake that kept open question 11 open |
 | M3c | `Behaviour.update` takes the interpreter | Two of its verbs call `setBump`, which ends the tick with `processCommand`. The reference lets a verb run the sequence; it does not require it |
 | M3c | `ScreenRect` lives in `PoPCore/Sim`, not `Render` | It is collision, not drawing. The Render layer happens to use the same cel sizes |

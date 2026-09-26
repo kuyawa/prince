@@ -152,13 +152,15 @@ public extension ActorState {
         return ScreenRect(x: x, y: y, width: width, height: cel.height)
     }
 
-    /// `Actor.centerX` — the *sprite's* middle, half-pixel correction included.
-    func centerX() -> Int {
-        let cel = celSize()
+    /// `Actor.x` — the sprite's left edge, room-local, half-pixel correction included.
+    func spriteX() -> Int {
         var tempx = Double(charX + charFdx * charFace)
         if (charFood && charFace == -1) || (!charFood && charFace == 1) { tempx += 0.5 }
-        return CoordinateSpace.screenX(fromX: tempx) + cel.width / 2
+        return CoordinateSpace.screenX(fromX: tempx)
     }
+
+    /// `Actor.centerX` — the *sprite's* middle.
+    func centerX() -> Int { spriteX() + celSize().width / 2 }
 
     /// `Kid.getCharBoundsAbs` — `Rectangle(this.x, this.y - this.height, this.width, this.height)`,
     /// against the *live sprite* rather than the frame data.

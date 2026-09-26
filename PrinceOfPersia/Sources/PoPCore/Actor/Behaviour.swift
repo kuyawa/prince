@@ -668,9 +668,9 @@ public enum Behaviour {
 
     /// `Fighter.nearBarrier`.
     ///
-    /// Note the gate test calls `canCrossGate` with `walk` and `turn` both false, which
-    /// short-circuits the `(!walk || centreX …)` clause in the reference. That is why this
-    /// needs no screen-space geometry, while the `walk: true` callers do.
+    /// Note the gate test here calls `canCrossGate` with `walk` and `turn` both false, which
+    /// short-circuits the `(!walk || centreX …)` clause; the `walk: true` callers do need the
+    /// screen-space centres, and `SpriteMetrics` is what makes them available.
     public static func nearBarrier(
         _ state: ActorState,
         world: any TileWorld,
@@ -705,15 +705,23 @@ public enum Behaviour {
         let frontX = x + state.charFace
         let tileF = world.tile(x: frontX, y: y, room: state.room)
 
+        // Walking, a gate he is already up against is crossable even while it is too low — he is
+        // not walking *into* it, he is walking *out* from under it. The five-pixel margin is the
+        // reference’s.
+        let actorCentre = state.centerX()
+        let tileCentre = tile.centerX(column: x, atlas: world.atlasName)
+
         let frontBlocks =
             tileF.kind == .gate
             && ((!turn && state.charFace == -1) || (turn && state.charFace == 1))
             && world.gateBlocks(x: frontX, y: y, room: state.room)
+            && (!walk || actorCentre + 5 > tileCentre)
 
         let hereBlocks =
             tile.kind == .gate
             && ((!turn && state.charFace == 1) || (turn && state.charFace == -1))
             && world.gateBlocks(x: x, y: y, room: state.room)
+            && (!walk || actorCentre - 5 < tileCentre)
 
         return !(frontBlocks || hereBlocks)
     }
