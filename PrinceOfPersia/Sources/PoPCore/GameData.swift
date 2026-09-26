@@ -1,5 +1,10 @@
 import Foundation
 
+// `dladdr`, for finding the running image without a compile-time path.
+#if canImport(Darwin)
+import Darwin
+#endif
+
 /// Loads the bundled game data.
 ///
 /// This lives in `PoPCore` rather than `PoPHost` deliberately: the data model is part
@@ -28,50 +33,61 @@ public enum GameData {
     public static let actorAnimationNames = [
         "kid", "fighter", "shadow", "vizier", "princess", "mouse",
     ]
-
-    /// The SwiftPM resource bundle, looked for only where it can actually be.
-    /// **`Bundle.module` is deliberately not used.** SwiftPM generates an accessor that bakes an
-    /// absolute path into the binary at compile time:
+    /// The SwiftPM resource bundle, found without a single absolute path.
+    ///
+    /// **`Bundle.module` is not used at all.** SwiftPM generates an accessor with the builder's
+    /// own build directory baked in as a string literal:
     ///
     /// ```swift
     /// let mainPath = Bundle.main.bundleURL.appendingPathComponent("PrinceOfPersia_PoPCore.bundle")
-    /// let buildPath = "/Users/you/Documents/.../.build/release/PrinceOfPersia_PoPCore.bundle"
+    /// let buildPath = "<the machine that compiled this>/…/PrinceOfPersia_PoPCore.bundle"
     /// let bundle = Bundle(path: mainPath) ?? Bundle(path: buildPath)
     /// ```
     ///
-    /// Two things are wrong with that, and both bite.
+    /// Three things are wrong with that. The first candidate is `Bundle.main.bundleURL` plus the
+    /// bundle name, which inside an `.app` is the app *itself* rather than `Contents/Resources`, so
+    /// it misses every time. The fallback is a path into the builder's source tree, which on macOS
+    /// is usually under TCC-protected `~/Documents` — so the game asked for Documents access on
+    /// launch, and only ran on the machine that compiled it. And an absolute path at all means the
+    /// `.app` could not be moved or copied anywhere.
     ///
-    /// The first candidate is `Bundle.main.bundleURL` plus the bundle name, which inside an `.app`
-    /// is the app *itself* rather than `Contents/Resources` — so it misses every time.
-    ///
-    /// The fallback is an absolute path into the source tree of whoever compiled it. On macOS that
-    /// tree is almost always under `~/Documents`, which is **TCC-protected**, so the game asks the
-    /// player for permission to read their Documents folder on launch — to find a resource bundle
-    /// that is already inside the app. It also means a shipped `.app` would work on the build
-    /// machine and `fatalError` on any other.
-    ///
-    /// So the search is done here, over directories that belong to the app.
+    /// So the bundle is looked for at *run* time, in directories that belong to whatever is
+    /// running. Nothing here is a path of our own.
     static let resourceBundleName = "PrinceOfPersia_PoPCore.bundle"
+
+    /// The directory holding the running image, asked of the dynamic loader.
+    ///
+    /// `Bundle.main` answers a different question and gives a different answer under `swift test`,
+    /// where the main bundle is SwiftPM's helper binary inside the Xcode toolchain rather than
+    /// anything to do with this package. `dladdr` asks about the image that contains *this* code,
+    /// at run time, and returns whatever path the loader actually used — which is correct in an
+    /// `.app`, in `.build` and in a test bundle alike.
+    static var imageDirectory: URL? {
+        var info = Dl_info()
+        guard dladdr(#dsohandle, &info) != 0, let name = info.dli_fname else { return nil }
+        return URL(fileURLWithPath: String(cString: name)).deletingLastPathComponent()
+    }
 
     /// Where the resource bundle might be, in order, and nowhere else.
     static var resourceBundleDirectories: [URL] {
-        let container = Bundle.main.bundleURL
-
-        // An app bundle. `Contents/Resources` and nothing else: looking beside the `.app` would
-        // mean reading the directory it was built in, which is the TCC problem above.
-        if container.pathExtension == "app" {
+        // Inside an `.app`: `Contents/Resources` and nowhere else. Walking above the `.app` would
+        // read whatever folder it happens to be sitting in, which is how the Documents prompt
+        // happened in the first place.
+        if Bundle.main.bundleURL.pathExtension == "app" {
             return [Bundle.main.resourceURL].compactMap { $0 }
         }
 
-        // A bare executable, which is `swift run` and `swift build` output: the bundle sits either
-        // beside the binary or one level up from it. A test bundle is `.xctest/Contents/MacOS/x`,
-        // so one level up from the container is `.build/<config>`.
+        // Everywhere else: beside the running image and up from it, which covers `swift run`
+        // (`.build/<config>/Prince`, bundle alongside) and the test bundle
+        // (`….xctest/Contents/MacOS/…`, bundle three levels up).
         var directories: [URL] = []
-        if let executable = Bundle.main.executableURL?.deletingLastPathComponent() {
-            directories.append(executable)
+        var directory = imageDirectory ?? Bundle.main.bundleURL
+        for _ in 0..<5 {
+            directories.append(directory)
+            let parent = directory.deletingLastPathComponent()
+            if parent.path == directory.path { break }
+            directory = parent
         }
-        directories.append(container)
-        directories.append(container.deletingLastPathComponent())
         return directories
     }
 
@@ -80,18 +96,7 @@ public enum GameData {
             let candidate = directory.appendingPathComponent(resourceBundleName)
             if let bundle = Bundle(url: candidate) { return bundle }
         }
-
-        // Only now, and only for `swift test`. SwiftPM runs the suite under its own helper
-        // binary inside the Xcode toolchain, so `Bundle.main` is that helper and every path
-        // derived from it is wrong — the real bundle sits beside the `.xctest` in `.build`.
-        // `Bundle.module` knows that path because it was baked in at compile time, which is
-        // exactly what makes it unsafe as a *primary* source: it reads into the source tree,
-        // and on macOS that means `~/Documents`.
-        //
-        // Reaching it here is harmless, because a test only ever runs on the machine that built
-        // it. A launched `.app` finds its own bundle above and never evaluates this at all —
-        // `Bundle.module` is a lazy `static let`, so an unread property is an unread path.
-        return Bundle.module
+        return nil
     }
 
     /// Root of the bundled `Resources` directory.

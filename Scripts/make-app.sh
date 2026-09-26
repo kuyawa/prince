@@ -84,6 +84,33 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 echo "==> signing (ad hoc)"
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "    (codesign failed; the app still runs locally)"
 
+# ---------------------------------------------------------------------------
+# Does it actually stand on its own?
+# ---------------------------------------------------------------------------
+# Copy the app somewhere unrelated - a different directory, with a space in the name - and run it
+# from there. This is the check that matters: an app that loads its resources out of the source
+# tree it was built in works perfectly until somebody moves it, and an absolute path baked in at
+# compile time is invisible until then too.
+echo
+echo "==> checking it runs from somewhere else"
+CHECK="$(mktemp -d)/A Folder With Spaces"
+mkdir -p "$CHECK"
+cp -R "$APP" "$CHECK/"
+MOVED="$CHECK/$(basename "$APP")/Contents/MacOS/Prince of Persia"
+if "$MOVED" --level 3 --trace --ticks 1 >/dev/null 2>&1; then
+  echo "    yes - it loads level 3 from $CHECK"
+else
+  echo "    NO - the app cannot find its own resources once moved" >&2
+  rm -rf "$(dirname "$CHECK")"
+  exit 1
+fi
+rm -rf "$(dirname "$CHECK")"
+
+# And nothing under the hood should name a directory on the machine that built it.
+if strings "$APP/Contents/MacOS/Prince of Persia" | grep -q '^/Users/'; then
+  echo "    WARNING: the binary names an absolute path under /Users" >&2
+fi
+
 echo
 echo "built $APP"
 du -sh "$APP" | sed "s/^/    /"
