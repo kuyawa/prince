@@ -3,7 +3,7 @@
 A faithful port of Jordan Mechner's 1989 *Prince of Persia* to **Swift 6** and
 **SpriteKit**, for macOS.
 
-![Prince of Persia running at 5x](webshot.png)
+![Prince of Persia running at 5x](screenshots/webshot.png)
 
 ---
 
