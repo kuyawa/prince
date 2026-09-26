@@ -111,6 +111,7 @@ public final class LevelScene: SKScene {
                 &actor, world: level, interpreter: interpreter, effects: &effects
             )
         }
+        // The Prince uses Kid's threshold (189), not the Fighter's (192).
         FallCycle.checkRoomChange(&actor, world: level)
 
         ticksRun += 1

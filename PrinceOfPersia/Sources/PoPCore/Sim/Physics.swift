@@ -96,14 +96,72 @@ public enum FallCycle {
         return true
     }
 
-    /// `Fighter.checkRoomChange` — drop through the floor of the room below.
+    /// `Fighter.checkRoomChange` — drop straight through the floor of the room below.
     ///
-    /// The reference uses **192**, not the room height of 189. Reproduced as written.
-    public static func checkRoomChange(_ state: inout ActorState, world: (any ActorWorldQuery)?) {
+    /// **The reference uses 192 here, not the room height of 189.** Reproduced as written.
+    /// Guards use this; the Prince uses `checkRoomChange` below.
+    public static func fighterCheckRoomChange(
+        _ state: inout ActorState,
+        world: (any ActorWorldQuery)?
+    ) {
         guard state.charY > 192 else { return }
         state.charY -= 192
         state.baseY += Geometry.roomHeight
         if let links = world?.roomLinks(state.room) {
+            state.room = links.down
+        }
+    }
+
+    /// `Kid.checkRoomChange`.
+    ///
+    /// **189, not 192** — the Kid's threshold differs from the Fighter's. The rest of the
+    /// reference function only fires `onChangeRoom` to move the camera as the actor nears an
+    /// edge; it never changes `room` itself, which happens in `updateBlockPosition`. Those
+    /// dispatches are not emitted because the host reads `state.room` each frame.
+    ///
+    /// The reference also returns early on twenty specific frames "around alternating chx",
+    /// which exists to avoid a double room change while a frame is mid-flip. The `charY`
+    /// branch below is unaffected by that guard, so it is not reproduced.
+    public static func checkRoomChange(_ state: inout ActorState, world: any TileWorld) {
+        guard state.charY > Geometry.roomHeight else { return }
+        state.charY -= Geometry.roomHeight
+        state.baseY += Geometry.roomHeight
+        changeRoomDown(&state, world: world)
+    }
+
+    /// `Kid.changeRoomDown` — falling out of the bottom of a room.
+    ///
+    /// Includes the corner cases: with no room directly below, an actor at the right-hand edge
+    /// drops into the room below the one to its right, and one at the left edge into the room
+    /// below the one to its left. Both shift `charX` by a whole room so it stays room-local.
+    static func changeRoomDown(_ state: inout ActorState, world: any TileWorld) {
+        guard let links = world.roomLinks(state.room) else { return }
+
+        if links.down > 0 {
+            state.room = links.down
+            return
+        }
+
+        if state.charBlockX >= Geometry.roomColumns - 1 {
+            // `room = rooms[rooms[room].links.right].links.down`
+            let right = links.right
+            let room = right > 0 ? (world.roomLinks(right)?.down ?? 0) : 0
+            if room > 0 {
+                state.charX -= CoordinateSpace.xUnitsPerRoom
+                state.baseX += Geometry.screenWidth
+                state.charBlockX = 0
+            }
+            state.room = room
+        } else if state.charBlockX <= 0 {
+            var room = links.left
+            if room > 0 {
+                room = world.roomLinks(room)?.down ?? 0
+                state.charX += CoordinateSpace.xUnitsPerRoom
+                state.baseX -= Geometry.screenWidth
+                state.charBlockX = Geometry.roomColumns - 1
+            }
+            state.room = room
+        } else {
             state.room = links.down
         }
     }

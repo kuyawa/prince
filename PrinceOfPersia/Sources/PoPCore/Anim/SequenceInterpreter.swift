@@ -128,7 +128,9 @@ public struct SequenceInterpreter: Sendable {
             }
             state.charFrame = index
             state.applyFrameDefinition(table.frameDefs[index])
-            state.updateBlockPosition()
+            // Room transitions happen here, inside the sequence, exactly as in the reference:
+            // `CMD_FRAME` is the only caller of `updateBlockXY`.
+            state.updateBlockPosition(world: world)
             state.isProcessing = false
 
         case .goTo:

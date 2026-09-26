@@ -242,12 +242,60 @@ public struct ActorState: Sendable, Equatable {
     /// The `min(…, 2)` clamp is the engine's, not a safety net: an actor can never be
     /// in a row below the room's three.
     ///
-    /// The room-wrapping half of `updateBlockXY` — when `charBlockX` leaves `0...9` the
-    /// actor crosses into a neighbouring room — belongs to the level graph and lands in M5.
-    public mutating func updateBlockPosition() {
+    /// The room-wrapping half of `updateBlockXY` needs the level graph, so it takes a world:
+    ///
+    /// ```js
+    /// if (this.charBlockX < 0) {
+    ///   if (this.action === "highjump" && this.faceR()) return;
+    ///   let leftRoom = this.level.rooms[this.room].links.left;
+    ///   if (leftRoom > 0) {
+    ///     this.charX += 140;      // one room width, in x-units
+    ///     this.baseX -= 320;      // one room width, in screen pixels
+    ///     this.charBlockX = 9;
+    ///     this.room = leftRoom;
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// **`charX` stays room-local.** Crossing a boundary shifts it by a whole room (140
+    /// x-units) so the actor appears at the opposite edge of the room it just entered.
+    public mutating func updateBlockPosition(world: (any ActorWorldQuery)? = nil) {
         let footX = charX + charFdx * charFace - charFfoot * charFace
         let footY = charY + charFdy
+
+        let previousBlockY = charBlockY
         charBlockX = CoordinateSpace.blockX(fromX: footX)
         charBlockY = min(CoordinateSpace.blockY(fromY: footY), 2)
+
+        updateFallingBlocks(previousBlockY: previousBlockY)
+        transitionRoomIfNeeded(world: world)
+    }
+
+    /// `Fighter.updateFallingBlocks` — counts the floor levels the actor has dropped through.
+    /// More than one is fatal on landing.
+    private mutating func updateFallingBlocks(previousBlockY: Int) {
+        guard isInFallDown else { return }
+        if charBlockY != previousBlockY { fallingBlocks += 1 }
+    }
+
+    private mutating func transitionRoomIfNeeded(world: (any ActorWorldQuery)?) {
+        // Climbing manages its own position.
+        if action == "climbup" || action == "climbdown" { return }
+
+        if charBlockX < 0 {
+            if action == "highjump" && charFace == 1 { return }
+            guard let links = world?.roomLinks(room), links.left > 0 else { return }
+            charX += CoordinateSpace.xUnitsPerRoom
+            baseX -= Geometry.screenWidth
+            charBlockX = Geometry.roomColumns - 1
+            room = links.left
+        } else if charBlockX >= Geometry.roomColumns {
+            if action == "highjump" && charFace == -1 { return }
+            guard let links = world?.roomLinks(room), links.right > 0 else { return }
+            charX -= CoordinateSpace.xUnitsPerRoom
+            baseX += Geometry.screenWidth
+            charBlockX = 0
+            room = links.right
+        }
     }
 }

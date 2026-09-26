@@ -137,19 +137,20 @@ private func kidInterpreter() throws -> SequenceInterpreter {
     #expect(FallCycle.distanceToFloor(state) == 23)
 }
 
-@Test func roomChangeUsesTwoHundredAndNotTheRoomHeight() throws {
+@Test func theFighterRoomChangeThresholdIsOneHundredAndNinetyTwo() throws {
     // Fighter.checkRoomChange compares against 192 while the room is 189 tall. The
-    // reference is reproduced as written rather than tidied.
+    // reference is reproduced as written rather than tidied. Guards use this; the Prince
+    // uses Kid's 189 — see RoomTransitionTests.
     let level = try LevelRuntime(try GameData.level(1))
 
     var state = ActorState(location: 3, room: 1, face: 1)
     state.charY = 192
-    FallCycle.checkRoomChange(&state, world: level)
+    FallCycle.fighterCheckRoomChange(&state, world: level)
     #expect(state.room == 1, "exactly 192 is not past the threshold")
     #expect(state.baseY == 0)
 
     state.charY = 193
-    FallCycle.checkRoomChange(&state, world: level)
+    FallCycle.fighterCheckRoomChange(&state, world: level)
     #expect(state.charY == 1)          // 193 - 192, not 193 - 189
     #expect(state.baseY == Geometry.roomHeight)
     #expect(state.room == 2)           // level 1: room 1's down link is 2

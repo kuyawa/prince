@@ -73,14 +73,16 @@ func everyLevelBuildsAGridConsistentWithItsData(number: Int) throws {
 
 @Test func offMapLookupsReturnTheReferenceDummyWall() throws {
     let level = try levelOne()
-    // Level.js#getTileAt hands back its dummyWall for anything off the map, which is
-    // why an actor walking into a gap meets stone rather than falling out of the world.
-    #expect(level.tile(x: -1, y: 0, room: 1).kind == .wall)
-    #expect(level.tile(x: 10, y: 0, room: 1).kind == .wall)
-    #expect(level.tile(x: 0, y: -1, room: 1).kind == .wall)
-    #expect(level.tile(x: 0, y: 3, room: 1).kind == .wall)
+    // `getTileAt` hands back its dummyWall only when the lookup cannot reach a *real* room —
+    // a gap in the layout, an edge with nothing beyond it, or a room that does not exist.
+    // Reaching a neighbouring room is not "off the map"; see RoomTransitionTests.
+    #expect(level.tile(x: 10, y: 0, room: 1).kind == .wall, "room 1 has no right neighbour")
+    #expect(level.tile(x: 0, y: -1, room: 1).kind == .wall, "room 1 has nothing above it")
     #expect(level.tile(x: 0, y: 0, room: 999).kind == .wall)
     #expect(LevelRuntime.offMapTile.kind == .wall)
+
+    // Two levels past an edge still resolves only one room, then walls off.
+    #expect(level.tile(x: 20, y: 0, room: 1).kind == .wall)
 }
 
 @Test func roomLinksAreVisibleThroughTheWorldQuery() throws {

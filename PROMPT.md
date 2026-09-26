@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M5 — level graph and room transitions** |
-| **Last completed** | **M4 — rendering.** 113 tests pass. Level 1 draws, and the Prince walks around it |
+| **Current milestone** | **M6 — combat and guards** |
+| **Last completed** | **M5 — room traversal.** 125 tests pass. The Prince walks between rooms |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M5 room transitions, or M3c fidelity. Both are unblocked |
+| **Next action** | M6 combat and guards, or M3c fidelity. Both unblocked |
 
 ---
 
@@ -174,11 +174,28 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
   without the guard a scripted fall lands on its first tick.
 - **Palace wall colour overlays are not ported** (open question 12). Level 4 renders flatter.
 
-### M5 — Level graph and transitions
-- [ ] `RoomGraph`: room grid from `size`, `id == -1` holes, derived `links` (§6.1)
-- [ ] Room transitions (`CMD_UP`/`CMD_DOWN`, `Kid.js` `charY += 189` offset)
-- [ ] Prince spawn from `prince{}`; level load from `guards{}` and `events{}`
-- [ ] Level 1 traversable end to end
+### M5 — Level graph and transitions ✅ *complete*
+- [x] `RoomGraph` — grid, `id == -1` holes, derived links (done in M3a)
+- [x] **Cross-room tile lookup** — `getRoomX`/`getRoomY`, resolving **open question 10**
+- [x] Room wrapping in `updateBlockPosition`: `charX ± 140` x-units, `baseX ± 320` pixels
+- [x] `Kid.checkRoomChange` (threshold **189**, not the Fighter's 192) + `changeRoomDown`
+      with its corner cases for falling through the edge of a room
+- [x] `moveL` / `moveR`, and `updateFallingBlocks`
+- [x] `CMD_UP`/`CMD_DOWN` were already wired in M2
+- [x] **125 tests pass**, including two reference traces crossing from room 21 into room 5
+
+**Found:**
+- **Two different cross-room lookups exist.** `Level.getTileAt` chains (X, then Y-then-X);
+  `LevelBuilder.getTileObjectAt` applies all four offsets independently against the original
+  room. They agree where only x varies, which is every current caller. Open question 13.
+- Room 5 has **gates**; the first reference trace silently used a tracer whose `nearBarrier`
+  had no gate check, so the trace was wrong. Retargeted to room 21, which has a clean edge.
+  A reminder that a tracer is only as faithful as its weakest stub.
+- The renderer's wall-shape probe benefits from the same lookup: column 0 of room 1 now sees
+  a gate in room 5 rather than an assumed wall, so its wall frame changes — correctly.
+
+- [ ] **Not done:** `guards{}`/`events{}` loading (waits on M6 combat and M7 trobs), and
+      "level 1 traversable end to end" still needs `checkBarrier` and the exit door
 
 ### M6 — Combat and guards
 - [ ] `Guard` with skill tables from `Enemy.js` — transcribe all twelve columns verbatim

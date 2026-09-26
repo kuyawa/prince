@@ -75,18 +75,90 @@ public struct LevelRuntime: Sendable {
 
     public var roomNumbers: [Int] { placements.keys.sorted() }
 
-    /// A tile, with the reference's off-map semantics.
+    /// A tile, resolving across room edges exactly as `Level.js#getTileAt` does.
     ///
-    /// Out-of-room columns and rows resolve to `offMapTile`. The reference additionally
-    /// follows room links across edges so that a tile one column past the right edge is
-    /// the neighbour's first column — that path exists to serve `checkBarrier` and ledge
-    /// grabbing, and lands with the rest of M3.
+    /// ```js
+    /// getRoomX: function (room, x) {
+    ///   if (x < 0) { room = this.rooms[room].links.left;  x += 10; }
+    ///   if (x > 9) { room = this.rooms[room].links.right; x -= 10; }
+    ///   return { room, x };
+    /// }
+    /// getRoomY: function (room, y) {
+    ///   if (y < 0) { room = this.rooms[room].links.up;   y += 3; }
+    ///   if (y > 2) { room = this.rooms[room].links.down; y -= 3; }
+    ///   return { room, y };
+    /// }
+    /// ```
+    ///
+    /// `getTileAt` applies X first; only if that produced no room does it apply Y and then X
+    /// again. Anything landing outside a real room becomes `offMapTile` — the reference's
+    /// `dummyWall`.
+    ///
+    /// **This is what makes room traversal work.** Without it the tile one column past a
+    /// room's edge reads as a wall, so an actor at the threshold sees a barrier where the
+    /// neighbouring room has open floor, and refuses to walk through.
     public func tile(x: Int, y: Int, room: Int) -> Tile {
-        guard let placement = placements[room],
-              (0..<Geometry.roomColumns).contains(x),
-              (0..<Geometry.roomRows).contains(y)
+        guard placements[room] != nil else { return Self.offMapTile }
+
+        var newRoom: Int
+        var newX = x
+        let newY: Int
+
+        let horizontal = roomX(room: room, x: x)
+        if horizontal.room > 0 {
+            newRoom = horizontal.room
+            newX = horizontal.x
+            let vertical = roomY(room: newRoom, y: y)
+            newRoom = vertical.room
+            newY = vertical.y
+        } else {
+            let vertical = roomY(room: room, y: y)
+            newRoom = vertical.room
+            newY = vertical.y
+            if vertical.room > 0 {
+                let second = roomX(room: newRoom, x: x)
+                newRoom = second.room
+                newX = second.x
+            }
+        }
+
+        guard newRoom > 0, let placement = placements[newRoom],
+              (0..<Geometry.roomColumns).contains(newX),
+              (0..<Geometry.roomRows).contains(newY)
         else { return Self.offMapTile }
-        return placement.tile(x: x, y: y)
+
+        return placement.tile(x: newX, y: newY)
+    }
+
+    /// `Level.js#getRoomX`. The second lookup deliberately reads the *updated* room's links,
+    /// matching the reference — in practice the two branches cannot both fire.
+    private func roomX(room: Int, x: Int) -> (room: Int, x: Int) {
+        var room = room
+        var x = x
+        if x < 0 {
+            room = placements[room]?.links.left ?? -1
+            x += Geometry.roomColumns
+        }
+        if x >= Geometry.roomColumns {
+            room = placements[room]?.links.right ?? -1
+            x -= Geometry.roomColumns
+        }
+        return (room, x)
+    }
+
+    /// `Level.js#getRoomY`.
+    private func roomY(room: Int, y: Int) -> (room: Int, y: Int) {
+        var room = room
+        var y = y
+        if y < 0 {
+            room = placements[room]?.links.up ?? -1
+            y += Geometry.roomRows
+        }
+        if y >= Geometry.roomRows {
+            room = placements[room]?.links.down ?? -1
+            y -= Geometry.roomRows
+        }
+        return (room, y)
     }
 }
 

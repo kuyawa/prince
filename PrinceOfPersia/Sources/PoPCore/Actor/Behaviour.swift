@@ -232,6 +232,30 @@ public enum Behaviour {
         state.beginAction("step\(min(px, 14))")
     }
 
+    /// `Fighter.moveR` — whether the actor is moving right *as part of an action*.
+    ///
+    /// This is not "is the right key held". It derives a direction from the current action plus
+    /// facing, and several actions — stooping, bumping, standing, turning, striking — are
+    /// pinned in place and never count as movement.
+    public static func moveR(_ state: ActorState, extended: Bool = true) -> Bool {
+        if ["stoop", "bump", "stand", "turn", "turnengarde", "strike"].contains(state.action) {
+            return false
+        }
+        if extended && state.action == "engarde" { return false }
+        return (state.charFace == -1 && ["retreat", "stabbed"].contains(state.action))
+            || (state.charFace == 1 && !["retreat", "stabbed"].contains(state.action))
+    }
+
+    /// `Fighter.moveL` — the mirror of `moveR`.
+    public static func moveL(_ state: ActorState, extended: Bool = true) -> Bool {
+        if ["stoop", "bump", "stand", "turn", "turnengarde", "strike"].contains(state.action) {
+            return false
+        }
+        if extended && state.action == "engarde" { return false }
+        return (state.charFace == 1 && ["retreat", "stabbed"].contains(state.action))
+            || (state.charFace == -1 && !["retreat", "stabbed"].contains(state.action))
+    }
+
     /// `Fighter.distanceToEdge` — how far the actor's foot is from its tile's edge.
     public static func distanceToEdge(_ state: ActorState) -> Int {
         if state.charFace == 1 {
