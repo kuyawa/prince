@@ -202,3 +202,91 @@ private func kid(_ action: String = "stand") -> ActorState {
     simulation.tick(intents: [])
     #expect(!simulation.effects.contains(.timeUp))
 }
+
+// MARK: - The `action` setter
+
+@Test func assigningAnActionRewindsTheSequenceCursor() {
+    // The reference’s `action` setter does `this._action = value; this._seqpointer = 0;`. As a
+    // stored property the port worked everywhere except `startFall`, which assigned `action`
+    // without going through `beginAction` and so resumed the new sequence mid-way.
+    var state = kid("stand")
+    state.sequencePointer = 7
+    state.action = "running"
+    #expect(state.sequencePointer == 0, "assigning an action rewinds the cursor")
+
+    // And `beginAction` is just that, spelled out.
+    state.sequencePointer = 4
+    state.beginAction("stoop")
+    #expect(state.sequencePointer == 0)
+}
+
+@Test func goToBypassesTheSetterOnPurpose() {
+    // `CMD_GOTO` assigns `_action` and `_seqpointer` directly. Going through the setter would
+    // restart every jump from the top of its target sequence and loop forever.
+    var state = kid("stepfall")
+    state.assignActionDirectly("freefall", pointer: 1)
+    #expect(state.action == "freefall")
+    #expect(state.sequencePointer == 1, "the cursor is set, not rewound")
+}
+
+@Test func startingAFallRunsTheWholeHeadOfItsSequence() throws {
+    // The regression. `stepfall` opens with `ACT 3`, `CHX 1`, `CHY 3`, `IFWTLESS` and only then
+    // its first frame. Started from a `stand` that had left the cursor in the middle, the port
+    // used to skip all four — so `actionCode` stayed 0, `checkFloor` took its standing branch,
+    // and `startFall` was re-entered on every tick of the fall.
+    let world = World(try levelOne())
+    var state = kid("stand")
+    state.charBlockX = 2
+    state.charBlockY = 0
+    state.charX = CoordinateSpace.x(fromBlockX: 2)
+    state.charY = CoordinateSpace.y(fromBlockY: 0)
+    state.sequencePointer = 6
+    state.actionCode = 0
+
+    var effects: [ActorEffect] = []
+    try FallCycle.startFall(
+        &state, world: world, interpreter: makeKidInterpreter(), effects: &effects
+    )
+
+    #expect(state.action == "stepfall")
+    #expect(state.actionCode == 3, "`ACT 3` is the first instruction and must have run")
+    #expect(state.isInFallDown)
+    #expect(state.charFrame == 102, "and the sequence ran on to its first frame")
+}
+
+@Test func aTwoFloorDropLandsAsAMediumLanding() throws {
+    // The symptom the bug produced, played out end to end. Level 1 room 15 has open air from row 0
+    // down to the sword tile at row 2, so a two-floor drop.
+    //
+    // With `startFall` resuming mid-sequence the fall never set `actionCode` 3, so `checkFloor`
+    // took its standing branch and re-entered `startFall` every tick, zeroing `fallingBlocks`. The
+    // Prince landed with a soft landing and no damage, every time.
+    var simulation = try Simulation(level: try levelOne(), seed: 1)
+    var prince = simulation.world.actors[0]
+    prince.room = 15
+    prince.charBlockX = 2
+    prince.charBlockY = 0
+    prince.charX = CoordinateSpace.x(fromBlockX: 2)
+    prince.charY = CoordinateSpace.y(fromBlockY: 0)
+    prince.charFace = 1
+    simulation.world.actors[0] = prince
+
+    // Stopped on the tick he lands: the splash is up for two ticks and then fades, so reading it
+    // ten ticks later is reading a different thing.
+    var heard: [SoundEffect] = []
+    for _ in 0..<12 {
+        simulation.tick(intents: [])
+        for effect in simulation.effects {
+            if case let .sound(sound) = effect { heard.append(sound) }
+        }
+        if simulation.world.actors[0].action == "medland" { break }
+    }
+
+    let landed = simulation.world.actors[0]
+    #expect(landed.action == "medland", "two floors is a medium landing, not a step down")
+    #expect(heard.contains(.mediumLandingOof))
+    #expect(landed.health == 2, "and it costs a point")
+    #expect(landed.isSplashVisible, "with the pool drawn low, as if he went down on one knee")
+    #expect(landed.splashOffsetY == Splash.crouchingOffsetY)
+}
+
