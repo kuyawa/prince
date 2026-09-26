@@ -45,9 +45,53 @@ public struct World: Sendable {
     }
 
     /// The same tick, with the sounds the mechanisms made handed to the caller.
-    public mutating func update(effects: inout [ActorEffect]) {
-        state.update().forEach { effects.append(.sound($0)) }
+    public mutating func update(effects: inout [ActorEffect], cameraRoom: Int? = nil) {
+        // The camera room is the Prince's: a chopper cutting in another room is off screen and
+        // therefore silent, which is what `handleChop`'s room test is for.
+        state.update(cameraRoom: cameraRoom ?? actors[0].room)
+            .forEach { effects.append(.sound($0)) }
     }
+
+    /// `handleChop` — set one specific chopper going.
+    ///
+    /// The row cascade goes through `activateChopper`; this is the direct call the cascade itself
+    /// makes, exposed so a test can start a blade in the middle of a row.
+    public mutating func chopChopper(at ref: TileRef, audible: Bool) {
+        guard var chopper = state.chopper(at: ref) else { return }
+        chopper.chop(audible: audible)
+        state.replace(trob: .chopper(chopper), at: ref)
+    }
+
+    /// Steps a chopper's cycle forward without any actor present.
+    ///
+    /// A seam for tests: a cut can only land on steps 1 to 3 of a fifteen-step cycle, so a test
+    /// that wants a killing blow has to place the blades on the right step first.
+    public mutating func advanceChoppers(to step: Int) {
+        for (ref, var trob) in state.trobs {
+            guard var chopper = trob.chopper else { continue }
+            chopper.chop(audible: false)
+            while chopper.step < step { _ = chopper.update() }
+            trob = .chopper(chopper)
+            state.replace(trob: trob, at: ref)
+        }
+    }
+
+    /// `Chopper.showBlood` — the stain is left behind even when the actor survives.
+    public mutating func markChopperBloody(at ref: TileRef) {
+        guard var chopper = state.chopper(at: ref) else { return }
+        chopper.showBlood()
+        state.replace(trob: .chopper(chopper), at: ref)
+    }
+
+    /// `Level.activateChopper` — start the leftmost chopper in a row.
+    /// `Level.activateChopper`. Pass `after: -1` for "the leftmost blade in the row", which is
+    /// what an actor walking in does.
+    public mutating func activateChopper(after column: Int, row: Int, room: Int, cameraRoom: Int) {
+        state.activateChopper(after: column, row: row, room: room, cameraRoom: cameraRoom)
+    }
+
+    /// The chopper at a position, if there is one.
+    public func chopper(at ref: TileRef) -> Chopper? { state.chopper(at: ref) }
 
     /// Potions waiting for their one-second delay to elapse.
     public private(set) var pendingPotions: [PendingPotion] = []

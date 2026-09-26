@@ -134,6 +134,9 @@ public struct LevelState: Sendable {
                     // use a non-zero modifier to mean "always out".
                     if tile.modifier == 0 { trobs[ref] = .spikes(Spikes(modifier: tile.modifier)) }
 
+                case .chopper:
+                    trobs[ref] = .chopper(Chopper())
+
                 case .potion:
                     trobs[ref] = .potion(Potion(modifier: tile.modifier, scatter: index))
 
@@ -160,9 +163,12 @@ public struct LevelState: Sendable {
     /// The reference drives this from `Game.updateWorld` on an 80 ms timer; a simulation tick is
     /// 1/12 s ≈ 83 ms, near enough that one call per tick is the faithful reading.
     @discardableResult
-    public mutating func update() -> [SoundEffect] {
+    public mutating func update(cameraRoom: Int = 0) -> [SoundEffect] {
         var pending: [(event: Int, kind: TileKind, stuck: Bool)] = []
         var sounds: [SoundEffect] = []
+        // A chopper that reaches its cut asks the level for the next one along. Collected here and
+        // run after the loop, so a cascade cannot mutate the dictionary mid-iteration.
+        var cascades: [(room: Int, row: Int, column: Int)] = []
 
         for (ref, var button) in buttons {
             if let push = button.update() {
@@ -173,7 +179,9 @@ public struct LevelState: Sendable {
         // A board that just gave way takes the floor out with it, for good.
         for (ref, var trob) in trobs {
             guard var board = trob.looseBoard else {
-                if let sound = trob.update().sound { sounds.append(sound) }
+                let outcome = trob.update()
+                if let sound = outcome.sound { sounds.append(sound) }
+                if outcome.chopped { cascades.append((ref.room, ref.y, ref.x)) }
                 trobs[ref] = trob
                 continue
             }
@@ -189,7 +197,54 @@ public struct LevelState: Sendable {
         for event in pending {
             fire(event.event, kind: event.kind, stuck: event.stuck, sounds: &sounds)
         }
+        for cascade in cascades {
+            // `onChopped` passes the chopper's own column, so the cascade moves rightwards.
+            activateChopper(
+                after: cascade.column, row: cascade.row,
+                room: cascade.room, cameraRoom: cameraRoom
+            )
+        }
         return sounds
+    }
+
+    // MARK: - Choppers
+
+    /// `Level.activateChopper` — find the next chopper to the right and set it going.
+    ///
+    /// ```js
+    /// activateChopper: function (x, y, room) {
+    ///   do { tile = this.getTileAt(++x, y, room); }
+    ///   while (x < 9 && tile.element !== TILE_CHOPPER);
+    ///   if (tile.element === TILE_CHOPPER) { this.delegate.handleChop(tile); }
+    /// },
+    /// ```
+    ///
+    /// **The starting column is an argument, and the two callers pass different things.**
+    /// `Fighter.checkChoppers` passes `-1`, so an actor walking into a row wakes its *leftmost*
+    /// blade. `Chopper.onChopped` passes `this.roomX`, so a blade reaching its cut wakes the
+    /// **next one along** — not the leftmost again. A row of three therefore runs as a wave
+    /// travelling right, which is exactly what level 3's room 16 is built out of. Reading the
+    /// scan as "always the leftmost" makes blades four and five decorative, and level 3 passable
+    /// by walking through them.
+    ///
+    /// The scan starts one column right of `startColumn` and may look at column 9: the
+    /// `do`/\`while\` tests the bound *after* the fetch.
+    public mutating func activateChopper(
+        after startColumn: Int, row: Int, room: Int, cameraRoom: Int
+    ) {
+        var column = startColumn
+        var found = false
+        repeat {
+            column += 1
+            found = level.tile(x: column, y: row, room: room).kind == .chopper
+        } while column < Geometry.roomColumns - 1 && !found
+        guard found else { return }
+        let ref = TileRef(room: room, x: column, y: row)
+        guard var chopper = trobs[ref]?.chopper else { return }
+
+        // `handleChop`: the blades only make a noise in the room the camera is on.
+        chopper.chop(audible: room == cameraRoom)
+        trobs[ref] = .chopper(chopper)
     }
 
     /// The actor stepped onto a button. Returns `true` if a button was actually pressed.
@@ -214,6 +269,9 @@ public struct LevelState: Sendable {
 
     /// The spike field at a position, if there is one.
     public func spikes(at ref: TileRef) -> Spikes? { trobs[ref]?.spikes }
+
+    /// The chopper at a position, if there is one.
+    public func chopper(at ref: TileRef) -> Chopper? { trobs[ref]?.chopper }
 
     /// The potion at a position, if there is one.
     public func potion(at ref: TileRef) -> Potion? { trobs[ref]?.potion }

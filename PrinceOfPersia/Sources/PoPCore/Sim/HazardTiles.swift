@@ -129,6 +129,75 @@ public struct Spikes: Sendable, Equatable {
     }
 }
 
+// MARK: - Chopper
+
+/// `PrinceJS.Tile.Chopper` — the slicer blades that drop out of a ceiling.
+///
+/// The blades are *always* running; what an actor triggers is one cut. `chop` starts a fifteen-step
+/// cycle, and only steps 1 to 3 can take a head off — step 3 is the frame the blades meet, which is
+/// also the only one that makes a noise and the only one that asks the level to start the next
+/// chopper along.
+public struct Chopper: Sendable, Equatable {
+    public var isActive: Bool
+    public var step: Int
+
+    /// `handleChop` passes `tile.room === currentCameraRoom`, so a chopper in a room the camera
+    /// is not on cuts silently. Without it, a row of blades across three rooms would roar.
+    public var isAudible: Bool
+
+    /// `Chopper.showBlood` — the stain is drawn from the `general` atlas.
+    public var showsBlood: Bool
+
+    /// The cycle resets after this step.
+    public static let lastStep = 14
+    /// The only step that can cut.
+    public static let cutStep = 3
+    /// Frames run 0 to 5; the cycle keeps counting to 14 without drawing anything new.
+    public static let lastFrame = 5
+
+    public init() {
+        isActive = false
+        step = 0
+        isAudible = false
+        showsBlood = false
+    }
+
+    /// `Chopper.chop`.
+    public mutating func chop(audible: Bool) {
+        isActive = true
+        isAudible = audible
+    }
+
+    /// `Chopper.showBlood`.
+    public mutating func showBlood() { showsBlood = true }
+
+    /// The frame to draw.
+    ///
+    /// There is **no frame 0**. `Chopper.update` increments `step` *before* it names a frame, so
+    /// the first frame drawn is 1; the constructor starts the child sprites on frame 5, and steps
+    /// past 5 leave them there. Hence 5 is both the resting pose and the last frame of the cut.
+    public var frameIndex: Int {
+        step >= 1 && step <= Self.lastFrame ? step : Self.lastFrame
+    }
+
+    /// `Chopper.update`.
+    public mutating func update() -> Trob.Outcome {
+        guard isActive else { return Trob.Outcome() }
+
+        step += 1
+        if step > Self.lastStep {
+            step = 0
+            isActive = false
+            return Trob.Outcome()
+        }
+        // Past frame 5 the cycle still runs but draws nothing, so there is nothing to report.
+        guard step <= Self.lastFrame else { return Trob.Outcome() }
+        guard step == Self.cutStep else { return Trob.Outcome() }
+
+        return Trob.Outcome(sound: isAudible ? .slicerBladesClash : nil, chopped: true)
+    }
+}
+
 // MARK: - Potion
 
 /// What drinking a potion does, `POTION_*` in `Level.js`.

@@ -74,6 +74,12 @@ public struct LevelRuntime: Sendable {
     public func placement(of room: Int) -> RoomPlacement? { placements[room] }
 
     /// A tile by its flat index within a room, with no cross-room resolution.
+    /// The tile atlas this level draws from: `dungeon` or `palace`.
+    ///
+    /// `LevelBuilder` picks it from the level type and every tile of a level shares it, which is
+    /// why `chopDistance` can ask for it here rather than threading it through the check.
+    public var atlasName: String { data.type == .dungeon ? "dungeon" : "palace" }
+
     public func tile(atIndex index: Int, room: Int) -> Tile {
         guard let placement = placements[room],
               (0..<Geometry.tilesPerRoom).contains(index)

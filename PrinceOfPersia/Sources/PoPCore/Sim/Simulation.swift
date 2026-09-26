@@ -221,6 +221,12 @@ public struct Simulation: Sendable {
         TileChecks.checkSpikes(&actor, world: &world, effects: &effects)
         world.actors[index] = actor
 
+        // `checkChoppers` — the kid wakes the blades in his row, and any chopper at his feet may
+        // take him in half. Runs before the spike checks, matching `updateActor`'s order.
+        actor = world.actors[index]
+        TileChecks.checkChoppers(&actor, world: &world, effects: &effects)
+        world.actors[index] = actor
+
         // `checkButton`.
         actor = world.actors[index]
         if let pressed = TileChecks.checkButton(&actor, world: &world),

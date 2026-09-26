@@ -1145,6 +1145,71 @@ the first attempt did.
 and one unit for a potion, facing left the same `charBlockX++` (which moves him the *other* way)
 and three units back. Both land him over the item by different routes. Reproduced as written;
 `gotSword` and `drinkPotion` below depend on where it leaves him.
+### 7.9.9 Choppers, and the cel-geometry problem
+
+Choppers are the last hazard, and they are the one that forced a decision the rest of the port had
+been able to avoid.
+
+#### `activateChopper` takes a starting column
+
+```js
+activateChopper: function (x, y, room) {
+  do { tile = this.getTileAt(++x, y, room); }
+  while (x < 9 && tile.element !== TILE_CHOPPER);
+  if (tile.element === TILE_CHOPPER) { this.delegate.handleChop(tile); }
+}
+```
+
+**The two callers pass different starting columns, and that is the whole design.**
+`Fighter.checkChoppers` passes `-1`, so an actor walking into a row wakes its *leftmost* blade.
+`Chopper.onChopped` passes `this.roomX`, so a blade reaching its cut wakes the **next one along**.
+A row therefore runs as a wave travelling right, staggered three ticks apart.
+
+Reading the scan as "always the leftmost" is the obvious mistake, and it is invisible on levels
+with one chopper per row. On level 3's room 16 — three blades side by side — it makes blades four
+and five decorative and the row walkable. The port had it wrong for one build.
+
+#### Sprite geometry, and why the simulation needs the atlas
+
+`Fighter.chopDistance` is `tile.centerX - this.centerX - 16`, tested against a 6-pixel window. Both
+centres are **Phaser sprite centres**, and a Phaser sprite is as wide as its current frame:
+
+```js
+// phaser.js, PIXI.Sprite
+Object.defineProperty(PIXI.Sprite.prototype, "width", {
+  get: function () { return this.scale.x * this.texture.frame.width; }
+});
+```
+
+A dungeon tile cel is a constant 60 x 79 — packed at the cell origin, so it overhangs its 32-pixel
+cell by 14 on each side, which is the `- 13` in `addTile` seen from the other end. The Prince’s cels
+run from 11 px standing to 49 px mid-strike, so **half his width swings further than the window is
+wide**.
+
+So `SpriteMetrics` reads the cel sizes out of the atlas JSON. That is the same data `GameData`
+already reads for the frame-existence tests, it needs no Apple framework, and it is available to a
+headless test. One table unblocks `checkBarrier` too, whose `intersectsAbs` builds its rectangle
+from `x, width, 63` — which is open question 11, still open but no longer blocked.
+
+**One deliberate deviation.** `checkChoppers` runs *before* `updateCharPosition` in `updateActor`, so
+the reference measures the sprite as the previous tick left it — last tick’s frame and last tick’s
+screen x. Reproducing that would mean keeping a shadow copy of Phaser’s transform purely to
+reproduce an artefact of its update order, and the DOS original had no such lag. The port measures
+the live state.
+
+#### What the numbers mean in play
+
+Each blade owns a band about twelve screen pixels wide, and a running Prince covers about eleven
+pixels a tick. A blade is only lethal on three ticks out of fifteen. So the blades are dodgeable at
+a run and lethal if you mistime it — which is what makes level 3’s room 16 a puzzle rather than a
+wall. The port reproduces that; it is worth knowing it is not a bug when the Prince runs through.
+
+#### Emptiness is the failure mode
+
+There is **no `dungeon_chopper_0`**. `Chopper.update` increments `step` before it names a frame, so
+the first frame drawn is 1; the constructor starts the children on frame 5, and steps past 5 leave
+them there. Frame 5 is therefore both the resting pose and the end of the cut. A renderer that asks
+for frame 0 draws nothing at all, and nothing-at-all looks exactly like an empty ceiling.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1392,6 +1457,10 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M7c-2 | `Level.activateChopper` takes a starting column, and the two callers differ | `checkChoppers` passes `-1` for the leftmost blade; `onChopped` passes its own column for the next one along. Reading it as always-leftmost makes a multi-blade row walkable |
+| M7c-2 | `SpriteMetrics` reads cel sizes from the atlas JSON into `PoPCore` | `chopDistance` and `checkBarrier` both measure Phaser sprite centres, and a sprite is as wide as its current frame. The table is data, not a framework, and a headless test can reach it |
+| M7c-2 | `chopDistance` measures the live state, not the previous tick’s sprite | The reference reads a transform that `updateCharPosition` left stale. That lag is a Phaser artefact; the DOS original had none |
+| M7c-2 | `Chopper.frameIndex` is 5 when idle, never 0 | There is no frame 0 in the atlas: `update` increments before naming a frame |
 | M7c | Spikes, potions and swords are trobs, driven by actors rather than by buttons | The reference raises a field from inside the actor’s own check; a button-driven model would miss the case where two actors disturb the same field |
 | M7c | `checkSpikeFloor` is separate from `FallCycle.checkFloorStanding` | Raising a field mutates the world; the falling branch only reads. The guard duplication is deliberate and the branches are mutually exclusive |
 | M7c | Potion effects are queued as `PendingPotion` on `World` and applied twelve ticks later | The reference delays them 1000 ms so the drink animation reads; twelve ticks is that second without a clock |

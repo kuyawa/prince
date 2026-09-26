@@ -178,6 +178,25 @@ public enum RoomRenderer {
             ]
         }
 
+        if tile.kind == .chopper {
+            // Chopper.js: the blades are a back child and a front child, each cycling through
+            // frames 0 to 5, and the blood stain is a child of the *front* at (12, 41).
+            let ref = TileRef(room: room, x: column, y: row)
+            let chopper = world?.state.trob(at: ref)?.chopper ?? Chopper()
+            let frame = chopper.frameIndex
+            var parts = [
+                TilePart(frame: "\(prefix)_chopper_\(frame)", z: tileBackgroundDetailZ),
+                TilePart(frame: "\(prefix)_chopper_\(frame)_fg", z: tileForegroundZ),
+            ]
+            if chopper.showsBlood {
+                parts.append(TilePart(
+                    frame: "chopper-blood_\(frame)", dx: 12, dy: 41,
+                    z: tileForegroundDetailZ, atlas: "general"
+                ))
+            }
+            return parts
+        }
+
         if tile.kind == .potion {
             // Potion.js: the bottle is a *suffix on the front frame* — `dungeon_10_fg_1` —
             // and the bubbles are a child of the front at (25, 53), or 49 for the three wider

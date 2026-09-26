@@ -182,4 +182,139 @@ public enum TileChecks {
         guard state.isAlive, state.charName != "skeleton" else { return }
         Combat.die(&state, action: "impale", effects: &effects)
     }
+    // MARK: - Choppers
+
+    /// `Fighter.chopDistance` — how far the actor is from a chopper’s blades, in screen pixels.
+    ///
+    /// ```js
+    /// chopDistance: function (tile) {
+    ///   let offsetX = -16;
+    ///   return tile.centerX - this.centerX + offsetX;
+    /// }
+    /// ```
+    ///
+    /// **Both centres are Phaser sprite centres, and a Phaser sprite is as wide as its current
+    /// frame** — `PIXI.Sprite.width = scale.x * texture.frame.width`. The tile cel is a constant
+    /// 60 px, but the actor’s runs from 11 px standing to 49 px mid-strike, so half of it swings
+    /// by more than the 6-pixel window the result is tested against. `SpriteMetrics` reads the
+    /// real numbers out of the atlas JSON.
+    ///
+    /// **One deliberate deviation.** `checkChoppers` runs *before* `updateCharPosition` in
+    /// `updateActor`, so the reference is measuring the sprite as it was left at the end of the
+    /// previous tick — last tick’s frame and last tick’s screen x. Reproducing that would mean
+    /// keeping a shadow copy of Phaser’s transform purely to reproduce an artefact of its update
+    /// order, and the DOS original had no such lag. The port measures the live state.
+    public static func chopDistance(
+        _ state: ActorState, tileColumn: Int, levelAtlas: String
+    ) -> Int {
+        let tileWidth = SpriteMetrics.width(
+            atlas: levelAtlas, frame: "\(levelAtlas)_\(TileKind.chopper.rawValue)"
+        ) ?? SpriteMetrics.dungeonTileSize.width
+
+        var tempx = Double(state.charX + state.charFdx * state.charFace)
+        let halfPixel = (state.charFood && state.charFace == -1)
+            || (!state.charFood && state.charFace == 1)
+        if halfPixel { tempx += 0.5 }
+
+        let actorWidth = SpriteMetrics.actorWidth(
+            charName: state.charName, frame: state.charFrame
+        )
+
+        // tile.centerX - actor.centerX - 16
+        return tileColumn * Geometry.blockWidth + tileWidth / 2
+            - CoordinateSpace.screenX(fromX: tempx) - actorWidth / 2 - 16
+    }
+
+    /// `Fighter.inChopDistance`. The window widens by ten pixels with the sword drawn — a blade
+    /// held out in front is exactly what the extra reach represents.
+    public static func inChopDistance(
+        _ state: ActorState, tileColumn: Int, levelAtlas: String
+    ) -> Bool {
+        let window = 6 + (state.swordDrawn ? 10 : 0)
+        return abs(chopDistance(state, tileColumn: tileColumn, levelAtlas: levelAtlas)) < window
+    }
+
+    /// `Fighter.checkChoppers`.
+    ///
+    /// The kid wakes the leftmost blades in his row every tick, and reaches into the neighbouring
+    /// room when he is up against the boundary — which is how blades in an adjacent room can be
+    /// heard before it is on screen.
+    public static func checkChoppers(
+        _ state: inout ActorState, world: inout World, effects: inout [ActorEffect]
+    ) {
+        if state.charName == "kid" {
+            let cameraRoom = world.actors[0].room
+            // `-1`: the leftmost blade in the row.
+            world.activateChopper(
+                after: -1, row: state.charBlockY, room: state.room, cameraRoom: cameraRoom
+            )
+
+            if let links = world.roomLinks(state.room) {
+                if state.charBlockX == Geometry.roomColumns - 1, state.charX > 130,
+                   links.right > 0 {
+                    world.activateChopper(
+                        after: -1, row: state.charBlockY,
+                        room: links.right, cameraRoom: cameraRoom
+                    )
+                }
+                if state.charBlockX == 0, state.charX < 5, links.left > 0 {
+                    world.activateChopper(
+                        after: -1, row: state.charBlockY,
+                        room: links.left, cameraRoom: cameraRoom
+                    )
+                }
+            }
+        }
+        tryChoppers(
+            x: state.charBlockX, y: state.charBlockY,
+            state: &state, world: &world, effects: &effects
+        )
+    }
+
+    /// `Fighter.tryChoppers` — a chopper can be on the actor’s own column or the one in front.
+    static func tryChoppers(
+        x: Int, y: Int,
+        state: inout ActorState, world: inout World, effects: inout [ActorEffect]
+    ) {
+        // Bones do not bleed.
+        if state.charName == "skeleton" { return }
+
+        for column in [x, x + 1] {
+            guard let ref = world.resolve(x: column, y: y, room: state.room),
+                  let chopper = world.chopper(at: ref)
+            else { continue }
+            tryChopper(chopper, at: ref, column: column, state: &state, world: &world,
+                       effects: &effects)
+        }
+    }
+
+    /// `Fighter.tryChopperTile`.
+    ///
+    /// Only steps 1 to 3 can cut, and step 3 is the frame the blades meet. A turning actor is
+    /// spared — the reference excludes `turn` explicitly, and it is the only action excluded.
+    static func tryChopper(
+        _ chopper: Chopper, at ref: TileRef, column: Int,
+        state: inout ActorState, world: inout World, effects: inout [ActorEffect]
+    ) {
+        guard chopper.step >= 1, chopper.step <= Chopper.cutStep else { return }
+        guard state.action != "turn" else { return }
+        guard inChopDistance(state, tileColumn: column, levelAtlas: world.level.atlasName) else {
+            return
+        }
+
+        world.markChopperBloody(at: ref)
+        guard state.isAlive else { return }
+
+        dieChopper(&state, effects: &effects)
+        effects.append(.sound(.halvedByChopper))
+        FallCycle.alignToTile(&state, to: ref)
+        // The two halves fall apart: five units when he faced left, nine when he faced right.
+        state.charX += state.charFace == -1 ? -5 : -9
+    }
+
+    /// `Fighter.dieChopper`.
+    public static func dieChopper(_ state: inout ActorState, effects: inout [ActorEffect]) {
+        guard state.isAlive, state.charName != "skeleton" else { return }
+        Combat.die(&state, action: "halve", effects: &effects)
+    }
 }

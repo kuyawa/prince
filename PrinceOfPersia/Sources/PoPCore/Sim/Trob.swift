@@ -17,6 +17,7 @@ public enum Trob: Sendable, Equatable {
     case exitDoor(ExitDoor)
     case looseBoard(LooseBoard)
     case spikes(Spikes)
+    case chopper(Chopper)
     case potion(Potion)
     case sword(Sword)
 
@@ -45,7 +46,7 @@ public enum Trob: Sendable, Equatable {
             value.shake(fall: true); self = .looseBoard(value); return nil
         case var .spikes(value):
             let sound = value.raise(); self = .spikes(value); return sound
-        case .potion, .sword:
+        case .chopper, .potion, .sword:
             // Level.fireEvent does "if (tile.raise)", and a potion has no such method.
             return nil
         }
@@ -56,7 +57,7 @@ public enum Trob: Sendable, Equatable {
         case var .gate(value): value.drop(); self = .gate(value)
         case var .exitDoor(value): value.drop(); self = .exitDoor(value)
         case var .spikes(value): value.drop(); self = .spikes(value)
-        case .looseBoard, .potion, .sword: break
+        case .looseBoard, .chopper, .potion, .sword: break
         }
     }
 
@@ -79,6 +80,10 @@ public enum Trob: Sendable, Equatable {
             value.update()
             self = .spikes(value)
             return Outcome()
+        case var .chopper(value):
+            let outcome = value.update()
+            self = .chopper(value)
+            return outcome
         case var .potion(value):
             value.update()
             self = .potion(value)
@@ -107,6 +112,11 @@ public enum Trob: Sendable, Equatable {
 
     public var spikes: Spikes? {
         if case let .spikes(value) = self { return value }
+        return nil
+    }
+
+    public var chopper: Chopper? {
+        if case let .chopper(value) = self { return value }
         return nil
     }
 

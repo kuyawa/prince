@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M7c-2 — choppers** |
-| **Last completed** | **M7c-1 — spikes, potions and the sword.** 264 tests pass |
-| **Blocked on** | nothing. M3c (barriers, ledges) is deferred, not blocking |
+| **Current milestone** | **M3c — barriers and ledges** *(SpriteMetrics now unblocks `checkBarrier`)* |
+| **Last completed** | **M7c-2 — choppers.** 277 tests pass |
+| **Blocked on** | nothing. All seven hazards are in |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M7c-2 choppers, or the M6d presentation leftovers |
+| **Next action** | M3c `checkBarrier`, or the M6d presentation leftovers |
 
 ---
 
@@ -267,15 +267,36 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - **A potion’s bubbles come from the `general` atlas**, not the level’s — the one sprite in the
   game that belongs to neither a tile nor an actor.
 
-**Still open (M7c-2 and M6d):**
-- [ ] **Choppers** — `activateChopper`’s row cascade, and `chopDistance`
-- [ ] **SpriteMetrics** — `chopDistance` and `checkBarrier` both need live Phaser sprite widths
-      (`PIXI.Sprite.width = scale.x * texture.frame.width`, confirmed in the vendored Phaser). A cel
-      size table read from the atlas JSON unblocks both. Level 3 room 16 has three adjacent
-      choppers, which is the cascade test.
-- [ ] Spikes, choppers, potions; `checkSpikes` and `checkChoppers`
-- [ ] `tryPickup` — which makes `stoop`'s pickup branches reachable
-- [ ] `checkBarrier` (M3c) — still blocks `bump`, and so the mirror branches of `jump()`
+**Done (M7c-2):**
+- [x] **`SpriteMetrics`** — cel sizes read out of the atlas JSON, for `chopDistance` and eventually
+      `checkBarrier`
+- [x] **`Chopper`** — the fifteen-step cycle, the cut on step 3 only, and the blood stain
+- [x] **`activateChopper`** and the travelling-wave cascade across a row of blades
+- [x] **`checkChoppers`**, the halving death, and the `turn` exemption
+- [x] Rendering, including the missing-frame-0 trap
+
+**Found:**
+- **`activateChopper` takes a starting column and the two callers differ.** `checkChoppers` passes
+  `-1` (the leftmost blade); `onChopped` passes its own `roomX`, so a cut wakes the **next** blade
+  along. I had it scanning from zero for both, which made level 3's three-blade row walkable —
+  blades two and three never ran. Caught by a test asserting which blade woke.
+- **A dungeon tile cel is 60 x 79 packed at a 32 x 63 cell origin**, so `tile.centerX` is 14 px
+  right of the cell centre. Combined with `PIXI.Sprite.width = scale.x * texture.frame.width` —
+  confirmed in the vendored Phaser — half an actor's width swings further than the 6-pixel window
+  it is tested against. Hence the cel-size table.
+- **There is no `dungeon_chopper_0`.** `update` increments before naming a frame, so the first
+  frame drawn is 1 and the resting pose is 5.
+- **A chopper is lethal on 3 ticks of 15, in a band about 12 px wide**, while a running Prince
+  covers ~11 px a tick. The blades are genuinely dodgeable at a run — level 3's room 16 is a timing
+  puzzle, not a wall. Worth knowing before "fixing" it.
+
+**Still open (M6d):**
+- [ ] **`checkBarrier`** (M3c) — now unblocked by `SpriteMetrics`; it still gates `bump` and the
+      mirror branches of `jump()`
+- [ ] The **time-up** hand-off: `timeUp` is detected but the host does not yet end the run
+- [ ] The dying animation's splash sprite, and the shadow overlay
+- [ ] **Ledges** — `tryGrabEdge`, `checkLedgeSwing`, `jumphang*`; the float potion's two ledge
+      tweaks ride along with them
 - [ ] `floorStopFall` — the board landing and becoming debris is not modelled (visual only)
 
 ### M6 — Combat and guards *(partially complete)*
@@ -394,7 +415,7 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - [x] Gates, raise/drop/stuck buttons, loose boards, potions, spikes, exit door
 - [x] Event triggers and `events[].next` chaining
 - [x] Level 1 completable start to finish
-- [ ] **Choppers** — the one hazard left (M7c-2)
+- [x] **Choppers** (M7c-2)
 
 ### M8 — Audio, UI, flow
 - [x] The mp3 bank and the sound channel *(M8b; `AVAudioPlayer`, not `AVAudioEngine` — the bank is
