@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M0 — not started** |
-| **Last completed** | — |
+| **Current milestone** | **M1 — data layer** |
+| **Last completed** | **M0 — skeleton.** `swift build` clean, 4/4 tests pass, window opens |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | Create the SwiftPM package skeleton (`ARCHITECTURE.md` §5) |
+| **Next action** | Decode levels, animation tables and `fcheck` (`ARCHITECTURE.md` §6) |
 
 ---
 
@@ -66,14 +66,18 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` §9.
 
-### M0 — Skeleton
-- [ ] `git init`; add `.gitignore` containing `reference/`, `.build/`, `.DS_Store`, `*.xcodeproj`
-- [ ] Create `PrinceOfPersia/Package.swift` with targets `PoPCore`, `PoPHost`, `Prince`, `PoPCoreTests`
-- [ ] `swift-tools-version: 6.0`, `swiftLanguageModes: [.v6]`, `platforms: [.macOS(.v26)]`
-- [ ] Copy game assets from `reference/PrinceJS/assets/` into the package's resources
-      (`gfx`, `maps`, `anims`, `sfx`, `music`, `font`, `cutscenes`)
-- [ ] Empty `SKScene` in a 640 × 400 window, `scaleMode = .aspectFit`, `filteringMode = .nearest`
-- [ ] Confirm: `swift test` passes and `swift run Prince` opens the window
+### M0 — Skeleton ✅ *complete*
+- [x] `git init`; add `.gitignore` containing `reference/`, `.build/`, `.DS_Store`, `*.xcodeproj`
+- [x] Create `PrinceOfPersia/Package.swift` with targets `PoPCore`, `PoPHost`, `Prince`, `PoPCoreTests`
+- [x] `swift-tools-version: **6.2**`, `swiftLanguageModes: [.v6]`, `platforms: [.macOS(.v26)]`
+      — **6.2, not 6.0**: `.macOS(.v26)` does not exist in the 6.0 tools manifest. Verified.
+- [x] Copy game assets from `reference/PrinceJS/assets/` into the package's resources
+      (`gfx`, `maps`, `anims`, `sfx`, `music`, `font`, `cutscenes`) — 7.8 MB, 133 files.
+      `maps/custom/` (212 third-party levels) and `assets/web/` (18 MB of site graphics) excluded.
+- [x] `SKScene` in a 640 × 400 window, `scaleMode = .aspectFit`. A 10 × 3 tile grid is drawn so
+      the 32 × 63 tile shape is visible. `filteringMode = .nearest` deferred to M4 — there are
+      no textures to filter yet.
+- [x] Confirm: `swift test` passes (4/4) and `swift run Prince` opens the window
 
 ### M1 — Data layer
 - [ ] `LevelData`, `RoomData`, `Tile`, `GuardSpawn`, `EventTrigger`, `PrinceSpawn` as `Codable` + `Sendable`

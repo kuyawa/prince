@@ -1,0 +1,16 @@
+{
+  "program": [
+    { "i": "ADD_ACTOR", "p1": 0, "p2": "princess", "p3": 62, "p4": 167, "p5": 1 },
+    { "i": "ADD_OBJECT", "p1": 0, "p2": 2, "p3": 152, "p4": 141 },
+    { "i": "START_OBJECT", "p1": 0 },
+    { "i": "START", "p1": 0 },
+    { "i": "ACTION", "p1": 0, "p2": "stand" },
+    { "i": "WAIT", "p1": 5 },
+    { "i": "MUSIC", "p2": "Heartbeat2" },
+    { "i": "FADEIN", "p1": 20 },
+    { "i": "WAIT", "p1": 40 },
+    { "i": "FADEOUT", "p1": 20 },
+    { "i": "WAIT", "p1": 55 },
+    { "i": "END", "p1": 0 }
+  ]
+}

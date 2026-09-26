@@ -160,7 +160,7 @@ Prince/                              ← workspace root
 ### Package.swift sketch
 
 ```swift
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2   // NOT 6.0 — that manifest has no .macOS(.v26)
 import PackageDescription
 
 let package = Package(
@@ -619,3 +619,5 @@ Where to look when you have a question. Keep this table current.
 | — | Reject `GKRandomSource` | Must be bit-exact LCG for replay determinism |
 | — | SwiftPM first, Xcode project later | Sub-second headless test loop over the risky part |
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
+| M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
+| M0 | Exclude `maps/custom/` and `assets/web/` from the bundle | 212 third-party levels and 18 MB of website graphics are not part of the game |
