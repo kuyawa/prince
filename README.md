@@ -202,7 +202,6 @@ Everything that made the original game:
 
 * **Cutscenes.** The title screen, the prologue and the ending are not ported.
 * **The shadow overlay** on levels 5 and 6, which needs a mirror-merge effect.
-* **A designed icon.** It is the game's own cover art, centre-cropped.
 
 Nothing is *simplified*. Where the original does something odd, this does the same
 odd thing, and `ARCHITECTURE.md` records why.

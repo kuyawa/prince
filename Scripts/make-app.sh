@@ -57,15 +57,21 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 echo "==> icon"
-# The cover art, centre-cropped to a square and scaled. It is the game’s own artwork rather than
-# something drawn for the purpose — honest, and better than a placeholder.
-SRC="$PACKAGE/Sources/PoPCore/Resources/gfx/cover.png"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 ICONSET="$TMP/AppIcon.iconset"
 mkdir -p "$ICONSET"
 
-sips -c 400 400 "$SRC" --out "$TMP/master.png" >/dev/null
+# A designed icon if there is one at the repo root, otherwise the game’s own cover art
+# centre-cropped to a square. The fallback is what shipped before appicon.png existed, and it is
+# kept so the script still works in a checkout that does not have the artwork.
+if [ -f "$ROOT/appicon.png" ]; then
+  sips -z 1024 1024 "$ROOT/appicon.png" --out "$TMP/master.png" >/dev/null
+  echo "    from appicon.png"
+else
+  sips -c 400 400 "$PACKAGE/Sources/PoPCore/Resources/gfx/cover.png" --out "$TMP/master.png" >/dev/null
+  echo "    from the game's cover art (no appicon.png at the repo root)"
+fi
 for spec in "16 16" "16 32" "32 32" "32 64" "128 128" "128 256" "256 256" "256 512" "512 512" "512 1024"; do
   set -- $spec
   base="$1"; px="$2"

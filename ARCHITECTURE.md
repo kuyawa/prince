@@ -1552,9 +1552,16 @@ place and the build was verified by running the bundle: level 3 loads and ticks.
 
 #### The icon
 
-Centre-cropped from the game’s own `cover.png`, scaled through the ten sizes `iconutil` wants. It
-is the game’s artwork rather than anything drawn for the purpose, which is honest and better than a
-placeholder — but it is also not a properly designed icon.
+`Scripts/make-app.sh` prefers a designed `appicon.png` at the repo root and scales it through the ten
+sizes `iconutil` wants. Two notes on it.
+
+**The master is 1024 × 1024 and has no alpha channel.** macOS does not mask app icons the way iOS
+does, so a fully opaque square renders as a fully opaque square in the Dock and in Finder. That is a
+legitimate style — plenty of apps ship full-bleed icons — but it is a *choice*, and the alternative
+is to round the corners in the artwork and let the transparency through.
+
+**The fallback is the game’s own `cover.png`**, centre-cropped, kept so the script still works in a
+checkout that does not have the artwork.
 
 ### 7.14 Key bindings
 
