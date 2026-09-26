@@ -95,6 +95,9 @@ public struct ActorState: Sendable, Equatable {
     /// Index into the guard difficulty tables, 0...11.
     public var charSkill: Int
 
+    /// The level's `colors` field — 0 for no tint, otherwise 1...7 into `HudRenderer.guardColors`.
+    public var guardColor: Int
+
     /// The three per-guard cooldowns, in ticks.
     public var refracTimer: Int
     public var blockTimer: Int
@@ -214,6 +217,7 @@ public struct ActorState: Sendable, Equatable {
         self.maxHealth = 3
         self.baseCharName = charName
         self.charSkill = 0
+        self.guardColor = 0
         self.refracTimer = 0
         self.blockTimer = 0
         self.strikeTimer = 0

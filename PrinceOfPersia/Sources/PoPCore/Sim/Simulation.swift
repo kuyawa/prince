@@ -18,6 +18,14 @@ public struct Simulation: Sendable {
     /// Effects produced by the tick just run. Drained every tick; the host reads them after.
     public private(set) var effects: [ActorEffect] = []
 
+    /// The hourglass. Counts simulated ticks rather than reading a wall clock, so a run is
+    /// reproducible and does not drift when frames are dropped.
+    public private(set) var clock = GameClock()
+
+    /// Ticks since this level loaded — what the status bar uses to decide whether to show the
+    /// level's name or the clock.
+    public private(set) var ticksInLevel = 0
+
     /// One interpreter per animation table — `kid`, `fighter`, `shadow`, and so on. They are
     /// stateless apart from the table, so they are shared rather than per-actor.
     private var interpreters: [String: SequenceInterpreter] = [:]
@@ -77,6 +85,16 @@ public struct Simulation: Sendable {
 
         // Gates and buttons advance once per tick, after the actors have moved.
         world.update()
+
+        clock.advance()
+        ticksInLevel += 1
+    }
+
+    /// The status bar's contents for this tick.
+    public func hud(font: BitmapFont) -> HudDescription {
+        HudRenderer.describe(
+            world: world, clock: clock, ticksInLevel: ticksInLevel, font: font
+        )
     }
 
     /// Runs `count` ticks with the same input, for headless tests and screenshots.

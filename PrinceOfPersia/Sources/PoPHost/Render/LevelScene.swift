@@ -28,6 +28,12 @@ public final class LevelScene: SKScene {
     private var lastUpdateTime: TimeInterval?
 
     private let spriteRoot = SKNode()
+    private let hudRoot = SKNode()
+
+    /// The status bar's own assets: the life pips and the interface font.
+    private let generalAtlas: TextureAtlas?
+    private let font: BitmapFont?
+    private let fontAtlas: FontAtlas?
 
     public private(set) var ticksRun = 0
 
@@ -59,6 +65,11 @@ public final class LevelScene: SKScene {
             named: level.data.type == .dungeon ? "dungeon" : "palace"
         )
 
+        self.generalAtlas = try? TextureAtlas(named: "general")
+        let loadedFont = try? GameData.bitmapFont()
+        self.font = loadedFont
+        self.fontAtlas = loadedFont.flatMap { try? FontAtlas(font: $0) }
+
         super.init(size: CGSize(width: Geometry.screenWidth, height: Geometry.screenHeight))
 
         self.scaleMode = .aspectFit
@@ -70,6 +81,8 @@ public final class LevelScene: SKScene {
         }
         // The sword overlay lives in its own atlas, named by the offset table's `id`.
         characterAtlases["sword"] = try? TextureAtlas(named: "sword")
+
+        addChild(hudRoot)
         redraw()
     }
 
@@ -86,6 +99,8 @@ public final class LevelScene: SKScene {
     public var currentAction: String { simulation.world.prince.action }
     public var currentFrame: Int { simulation.world.prince.charFrame }
     public var actorCount: Int { simulation.world.actors.count }
+    public var clock: GameClock { simulation.clock }
+    public var hudText: String { font.map { simulation.hud(font: $0).text } ?? "" }
 
     /// A one-line description of who the Prince is fighting, for the trace output.
     public func opponentDescription() -> String {
@@ -152,6 +167,64 @@ public final class LevelScene: SKScene {
         for sprite in description.sprites.sorted(by: { $0.z < $1.z }) {
             guard let node = makeNode(sprite) else { continue }
             spriteRoot.addChild(node)
+        }
+
+        redrawHud()
+    }
+
+    /// The status bar: a black strip at the bottom, the life pips, and the interface text.
+    ///
+    /// Everything is in SpriteKit's y-up space, so the bar's top is `screenHeight - barTop` and
+    /// each element's y counts down from there.
+    private func redrawHud() {
+        hudRoot.removeAllChildren()
+        guard let font else { return }
+
+        let barHeight = CGFloat(HudRenderer.barHeight)
+        let barTop = CGFloat(Geometry.screenHeight - HudRenderer.barTop)
+
+        let bar = SKSpriteNode(
+            color: .black,
+            size: CGSize(width: CGFloat(Geometry.screenWidth), height: barHeight)
+        )
+        bar.anchorPoint = CGPoint(x: 0, y: 1)
+        bar.position = CGPoint(x: 0, y: barTop)
+        bar.zPosition = 100
+        hudRoot.addChild(bar)
+
+        let hud = simulation.hud(font: font)
+
+        for pip in hud.pips {
+            guard let texture = generalAtlas?.texture(pip.frameName) else { continue }
+            let node = SKSpriteNode(texture: texture)
+            node.anchorPoint = CGPoint(x: 0, y: 1)
+            node.position = CGPoint(
+                x: CGFloat(pip.x),
+                y: barTop - CGFloat(pip.y - HudRenderer.barTop)
+            )
+            node.zPosition = 101
+            if let tint = pip.tint {
+                node.color = SKColor(
+                    red: CGFloat((tint >> 16) & 0xff) / 255,
+                    green: CGFloat((tint >> 8) & 0xff) / 255,
+                    blue: CGFloat(tint & 0xff) / 255,
+                    alpha: 1
+                )
+                node.colorBlendFactor = 1
+            }
+            hudRoot.addChild(node)
+        }
+
+        for glyph in hud.glyphs {
+            guard let texture = fontAtlas?.texture(glyph) else { continue }
+            let node = SKSpriteNode(texture: texture)
+            node.anchorPoint = CGPoint(x: 0, y: 1)
+            node.position = CGPoint(
+                x: CGFloat(glyph.x),
+                y: barTop - CGFloat(glyph.y - HudRenderer.barTop)
+            )
+            node.zPosition = 102
+            hudRoot.addChild(node)
         }
     }
 

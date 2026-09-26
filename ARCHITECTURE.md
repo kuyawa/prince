@@ -926,6 +926,53 @@ The Princess is rescued at the end of level 14, and the run stops rather than lo
 nonexistent 15 — `nextLevel(after:)` is a pure function so that decision is testable without a
 window.
 
+### 7.9.6 The hourglass and the status bar
+
+The clock is a real mechanic, not decoration: sixty minutes, and the tension in Prince of Persia
+comes substantially from it.
+
+**The reference reads the wall clock.** `getDeltaTime` subtracts `startTime` from `new Date()`.
+The port counts simulated ticks instead — identical under a fixed timestep, but it does not drift
+when frames are dropped, and it keeps a run reproducible from a seed, which a clock read cannot.
+
+#### Two readouts that are not the same quantity
+
+```js
+getDeltaTime: function () {
+  let diff = (PrinceJS.endTime || new Date()).getTime() - PrinceJS.startTime.getTime();
+  let minutes = Math.floor(diff / 60000);
+  let seconds = Math.floor(diff / 1000) % 60;      // the FIELD, not the total
+  return { minutes, seconds };
+},
+getRemainingMinutes: () => Math.min(60, Math.max(0, 60 - deltaTime.minutes)),
+getRemainingSeconds: () => Math.min(60, Math.max(0, 60 - deltaTime.seconds)),
+```
+
+`seconds` is the seconds **field**, so `remainingSeconds` counts down *within the current minute*
+and resets to 60 each time one rolls over. It is what the bar shows during the final minute —
+which is why the display jumps from "5 MINUTES LEFT" to "59 SECONDS LEFT" and never shows
+anything in between.
+
+#### The bar
+
+The bottom `UI_HEIGHT` (8) pixels of the 200-pixel screen — the same 11-pixel gap below the
+189-tall room that open question 4 flags.
+
+| Element | Position |
+|---|---|
+| Prince's lives | `x = i * 7`, `y = barTop + 2`, frame `kid-live` or `kid-emptylive` |
+| Opponent's lives | `x = 320 - i * 7 + 1`, right-aligned, frame `<baseCharName>-live`, tinted |
+| Text | centred on `(160, barTop + 3)` |
+
+The opponent's pips are tinted from `Enemy.COLOR` by the level's `colors` field.
+
+**Text is laid out in `PoPCore` and drawn in the host.** `BitmapFont` parses the BMFont XML
+(`prince.fnt`, 96 glyphs, a 256x256 page) and emits final glyph positions in the render
+description, so the host has nothing to measure — the same split as every other sprite.
+
+Note the pen advances by `xadvance`, not glyph width: a space is a 1x1 glyph with an advance of
+four, so it moves the pen without drawing anything.
+
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1173,6 +1220,8 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M8 | The clock counts simulated ticks rather than reading a wall clock | Identical under a fixed timestep, but no drift on dropped frames and reproducible from a seed |
+| M8 | Text layout lives in `PoPCore`; the host only draws positioned glyphs | Same split as sprite rendering — the host has nothing to measure |
 | M6c | Level chaining lives in `PoPHost`, the trigger in `PoPCore` | The simulation emits an effect; only the host knows levels are numbered |
 | M6c | The next-level decision is a `nonisolated` pure function | It is the one part of the coordinator that can be tested without a window |
 | M6c | Added a `PoPHostTests` target | Host policy — chaining, window scale, atlas slicing — otherwise accumulates in the scene where nothing can reach it |

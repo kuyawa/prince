@@ -54,11 +54,11 @@ Repeat these back before you start work. Violating any one of them is how this p
 
 | | |
 |---|---|
-| **Current milestone** | **M7c — spikes, choppers, potions** *(or M8 audio, UI and cutscenes)* |
-| **Last completed** | **M6c — sword overlay and level chaining.** 208 tests pass |
+| **Current milestone** | **M8b — audio** *(or M7c hazards)* |
+| **Last completed** | **M8a — the hourglass and the status bar.** 224 tests pass |
 | **Blocked on** | nothing. M3c (barriers, ledges, trobs) is deferred, not blocking |
 | **Open questions** | 9, listed in `ARCHITECTURE.md` §10 |
-| **Next action** | M7c hazards, or M8 audio and UI. Both unblocked |
+| **Next action** | M8b audio, or M7c hazards. Both unblocked |
 
 ---
 
@@ -294,10 +294,28 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
 - The sword atlas is not named for any actor, so a test that collected "available frames" per
   `charName` missed it. Worth remembering when adding an atlas.
 
-**Still open (M6d):**
-- [ ] Guard colour tints from `GuardSpawn.colors`
+**Done (M8a):**
+- [x] **`GameClock`** — sixty minutes, simulated ticks, and the three readout cases
+- [x] **`BitmapFont`** — parses `prince.fnt` (96 glyphs, BMFont XML) and lays text out
+- [x] **`HudRenderer`** — the bar, the life pips (both sides, tinted), the level title and the
+      clock text
+- [x] Rendered in the host, verified on screen: "LEVEL 1" centred, three pips on the left
+
+**Found:**
+- **`getDeltaTime().seconds` is the seconds FIELD, not total elapsed seconds**
+  (`Math.floor(diff / 1000) % 60`). So `getRemainingSeconds` counts within the current minute and
+  resets to 60 each time one rolls over — which is why the bar jumps from "5 MINUTES LEFT" to
+  "59 SECONDS LEFT" with nothing in between. I assumed total seconds twice before checking.
+- The clock is **wall-clock** in the reference. The port counts ticks: identical under a fixed
+  timestep, no drift on dropped frames, and reproducible from a seed.
+- A space is a **1x1 glyph with an advance of four**, so the pen moves without anything being
+  drawn.
+
+**Still open (M8b / M6d):**
+- [ ] **Audio** — the mp3 bank and `AVAudioEngine`; `ActorEffect.tap` and friends are emitted but
+      nothing plays them
+- [ ] The **time-up** hand-off: `timeUp` is detected but the host does not yet end the run
 - [ ] The dying animation's splash sprite, and the shadow overlay
-- [ ] Health pips and the rest of the UI
 - [ ] `canReachOpponent` is **simplified** — the reference walks a tile path measured from
       `centerX` (open question 11)
 

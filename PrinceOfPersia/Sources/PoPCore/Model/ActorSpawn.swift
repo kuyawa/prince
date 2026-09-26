@@ -47,6 +47,7 @@ public extension ActorState {
 
         actor.baseCharName = spawn.type == .guard ? "guard" : name
         actor.charSkill = spawn.skill
+        actor.guardColor = spawn.colors
         actor.hasSword = true
         actor.health = GuardBrain.health(skill: spawn.skill, levelNumber: levelNumber)
         actor.maxHealth = actor.health

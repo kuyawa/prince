@@ -53,6 +53,15 @@ public enum GameData {
         try decode(SwordOffsetTable.self, from: "anims/sword.json")
     }
 
+    /// The interface's bitmap font, from `font/prince.fnt`.
+    public static func bitmapFont() throws -> BitmapFont {
+        let url = rootURL.appendingPathComponent("font/prince.fnt")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw LoadError.missingResource("font/prince.fnt")
+        }
+        return try BitmapFont.parse(String(contentsOf: url, encoding: .utf8))
+    }
+
     /// The frame names an atlas declares, without loading its image.
     ///
     /// Lets `PoPCoreTests` verify that every sprite the renderer asks for actually exists —
