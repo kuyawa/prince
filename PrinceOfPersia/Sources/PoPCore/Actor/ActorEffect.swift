@@ -24,6 +24,12 @@ public enum ActorEffect: Sendable, Equatable {
     /// The fourth potion turned the screen upside down. Purely presentational.
     case flipScreen
 
+    /// The Prince died and the wait is over: reload the level from the top.
+    ///
+    /// The reference goes through `Game.reset`, which is a full reload — fresh health, fresh
+    /// boards, fresh everything.
+    case restartLevel
+
     /// The hourglass ran out.
     ///
     /// The reference sends the player to level 16 — a cutscene — which is not ported (see

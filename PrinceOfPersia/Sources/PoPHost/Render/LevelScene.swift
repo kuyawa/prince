@@ -59,6 +59,9 @@ public final class LevelScene: SKScene {
     /// The hourglass ran out. Fires once.
     public var onTimeUp: (() -> Void)?
 
+    /// The Prince died and the wait is over. The coordinator reloads the level.
+    public var onRestart: (() -> Void)?
+
     /// Fires once, the first time a level's opening cue should play. Levels 2 and up re-use the
     /// Danger theme, so the coordinator needs to know that a level *started*, not just which one.
     public var onLevelStarted: ((_ level: Int, _ danger: Bool) -> Void)?
@@ -67,6 +70,9 @@ public final class LevelScene: SKScene {
     private var hasReportedStart = false
     /// Set when the hourglass empties. The scene stops ticking — there is nothing left to play.
     private var hasTimedOut = false
+
+    /// Set once a restart has been handed to the coordinator, so it is asked for once.
+    private var hasRequestedRestart = false
 
     /// Whether the run is over for want of time.
     public var isTimedOut: Bool { hasTimedOut }
@@ -179,6 +185,10 @@ public final class LevelScene: SKScene {
                 guard !hasTimedOut else { break }
                 hasTimedOut = true
                 onTimeUp?()
+            case .restartLevel:
+                guard !hasRequestedRestart else { break }
+                hasRequestedRestart = true
+                onRestart?()
             default: break
             }
         }

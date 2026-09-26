@@ -69,6 +69,25 @@ Shift does everything that is not walking: **pick up** a sword, **drink** a poti
 and **climb the stairs** at an exit. It is a modifier rather than a letter key,
 which is why it is read from the modifier state and why you can rebind it.
 
+### When you die
+
+The Prince dies a lot, and the game says so and then gives you the level back:
+
+| | |
+|---|---|
+| **Any key** | Restart the level from the top |
+| *(or wait)* | It restarts itself after about twenty seconds |
+
+**"Press Button to Continue"** appears in the status bar four seconds after the death animation,
+flashes for the last stretch, and beeps each time it flashes back on. Pressing a key before the
+message appears still works — the countdown has already started.
+
+It is a **press**, not a hold. If you died while running right then you are still holding right,
+and that does not count: let go and press again.
+
+A restart is a full reload — full health, the boards whole, the gates shut, every guard back
+where the level put him. That is the run starting over, which is not the same as reaching a new
+level: finishing one carries your health forward.
 Note the two sequences you will press by accident:
 
 * **↑ + ←/→** is a standing jump; **↑ alone** jumps straight up, and becomes

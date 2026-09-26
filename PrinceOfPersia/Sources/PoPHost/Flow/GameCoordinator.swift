@@ -76,6 +76,9 @@ public final class GameCoordinator {
         scene.onTimeUp = { [weak self] in
             self?.runTimedOut()
         }
+        scene.onRestart = { [weak self] in
+            self?.restartLevel()
+        }
         scene.onLevelStarted = { [weak self] level, danger in
             self?.levelStarted(level, danger: danger)
         }
@@ -98,6 +101,31 @@ public final class GameCoordinator {
     /// Presents the level and hands the scene back to the caller to put in a window.
     public func present() {
         view.presentScene(scene)
+    }
+
+    /// The Prince died and the death wait is over: **reload the level from the top.**
+    ///
+    /// A full reload, not a rewind — `Game.reset` in the reference builds the level again, so the
+    /// Prince comes back with full health, the boards he broke are whole, the gates he opened are
+    /// shut, and every guard is where the level put him. Health is deliberately not carried: this
+    /// is the run starting over, unlike a level change.
+    private func restartLevel() {
+        audio.stopMusic()
+        audio.flush()
+        do {
+            let scene = try GameCoordinator.makeScene(
+                level: levelNumber, seed: seed, input: input, health: nil, maxHealth: nil
+            )
+            self.scene = scene
+            wire()
+            view.presentScene(scene, transition: SKTransition.fade(withDuration: 0.4))
+            print("[Prince] the Prince died — restarting level \(levelNumber)")
+            fflush(stdout)
+        } catch {
+            FileHandle.standardError.write(
+                Data("Could not restart level \(levelNumber): \(error)\n".utf8)
+            )
+        }
     }
 
     /// The hourglass ran out.

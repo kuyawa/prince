@@ -26,6 +26,19 @@ public struct Simulation: Sendable {
     /// level's name or the clock.
     public private(set) var ticksInLevel = 0
 
+    /// What happens after the Prince dies: a beat, four seconds, then a countdown that restarts
+    /// the level — or any key, which skips the rest of it.
+    public private(set) var death = DeathSequence()
+
+    /// Whether the Prince was alive at the end of the previous tick. The death is detected on the
+    /// tick the flag falls, so every cause of death is caught without each of them having to
+    /// remember to say so.
+    private var wasPrinceAlive = true
+
+    /// Set once a restart has been asked for, so a headless run asks once rather than every tick.
+    /// The host reloads the level and gets a fresh `Simulation` anyway; a test does not.
+    private var hasRequestedRestart = false
+
     /// One interpreter per animation table — `kid`, `fighter`, `shadow`, and so on. They are
     /// stateless apart from the table, so they are shared rather than per-actor.
     private var interpreters: [String: SequenceInterpreter] = [:]
@@ -89,6 +102,50 @@ public struct Simulation: Sendable {
         appliedEffectCount = effects.count
     }
 
+    /// `Game.handleDead`, `Game.checkTimers` and `Game.buttonPressed`.
+    ///
+    /// The death is noticed from the Prince's own flag rather than from a `.died` effect, because
+    /// the effect carries no actor: spikes, boards, choppers, guards and a plain fall out of the
+    /// world all end the same way, and none of them should have to report it separately.
+    private mutating func advanceDeath() {
+        let isAlive = world.prince.isAlive
+        if wasPrinceAlive, !isAlive, !hasRequestedRestart {
+            death.start()
+        }
+        wasPrinceAlive = isAlive
+
+        guard death.isRunning, !hasRequestedRestart else { return }
+
+        // A key *press* ends the wait wherever it has got to; otherwise the countdown does.
+        //
+        // **A press, not a hold.** The reference listens on Phaser's `onDownCallback`, which is a
+        // key-down event, and the distinction shows: a player killed while running right is still
+        // holding right, and treating that as a press would restart the level a fifth of a second
+        // after the death animation started. What the player has to do is let go and press again.
+        if death.acceptsButtonPress, !pressedIntents.subtracting(previousIntents).isEmpty {
+            death.stop()
+            hasRequestedRestart = true
+            effects.append(.restartLevel)
+            return
+        }
+
+        if death.advance() {
+            death.stop()
+            hasRequestedRestart = true
+            effects.append(.restartLevel)
+            return
+        }
+
+        // `Interface.update` beeps each time the flashing text comes back on.
+        if death.shouldBeep { effects.append(.sound(.beep)) }
+    }
+
+    /// The input for the tick being run, and for the one before it. Kept because the death wait
+    /// needs the *rising edge* — a key going down — and the tick's intents are otherwise gone by
+    /// the time it runs.
+    private var pressedIntents: Intents = .none
+    private var previousIntents: Intents = .none
+
     /// `Kid.drinkPotion`'s delayed switch, and the two life-changing events that come with it.
     ///
     /// Only the Prince can drink, so this reads actor 0. The reference dispatches the effect from
@@ -133,6 +190,7 @@ public struct Simulation: Sendable {
     public mutating func tick(intents: Intents) {
         effects.removeAll(keepingCapacity: true)
         appliedEffectCount = 0
+        pressedIntents = intents
 
         // Guards first, matching the reference's creation order.
         for index in world.actors.indices.dropFirst() {
@@ -152,13 +210,15 @@ public struct Simulation: Sendable {
         clock.advance()
         if clock.hasExpired, !wasExpired { effects.append(.timeUp) }
 
+        advanceDeath()
+        previousIntents = pressedIntents
         ticksInLevel += 1
     }
 
     /// The status bar's contents for this tick.
     public func hud(font: BitmapFont) -> HudDescription {
         HudRenderer.describe(
-            world: world, clock: clock, ticksInLevel: ticksInLevel, font: font
+            world: world, clock: clock, ticksInLevel: ticksInLevel, death: death, font: font
         )
     }
 

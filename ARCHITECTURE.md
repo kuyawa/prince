@@ -1474,6 +1474,52 @@ so the drawing and the collision already agreed. The shift was reverted.
 The method is worth keeping, though: two renders that differ only in where the Prince stands, and
 a difference against the second as the background, locates a sprite to the pixel. It is how the
 `[x - width, x]` placement was established rather than assumed.
+### 7.16 Dying, and getting the level back
+
+```js
+handleDead:    this.continueTimer = 10;
+
+checkTimers:   if (this.continueTimer > -1) {
+                 this.continueTimer--;
+                 if (this.continueTimer === 0) {
+                   this.ui.showPressButtonToContinue();   // shows the text after 4 s
+                   this.pressButtonToContinueTimer = 260; // then restarts on its own
+                 }
+               }
+
+buttonPressed: if (this.pressButtonToContinueTimer > -1) { this.reset(true); }
+```
+
+Three beats: a pause so the death animation is not cut off, four seconds of silence, then a
+countdown that reloads the level by itself. `buttonPressed` is bound to Phaser's
+`input.keyboard.onDownCallback`, so any key skips the rest of the wait.
+
+**This was missing entirely until it was asked for**, which is worth recording: the port had every
+hazard, every way to die, and no way back. The answer to "what key restarts a level?" was "none".
+
+#### A press is not a hold
+
+The distinction turns out to matter, and it is the one place the port had to think rather than
+transcribe. `onDownCallback` is a key-*down event*; the port's `Intents` is a *held state*. Copy
+the reference literally and a player killed while running right — still holding right — restarts
+the level a tenth of a second after the death animation begins. So the restart takes the **rising
+edge** of the intents: a key has to go down that was not down before.
+
+macOS does repeat a held key, and the reference would restart on the repeat a half-second later.
+The port does not, and that is deliberate: "press a button to continue" is what the message says,
+and waiting for a key repeat is not what a player does about it.
+
+#### A restart is a reload, not a rewind
+
+`Game.reset` builds the level again, so health is not carried. That is the opposite of the
+level-change path, which deliberately does carry it — finishing a level is progress, dying is not.
+
+#### The timings
+
+Ten ticks of pause, then 260 of countdown, at 1/12 s each: about 22 seconds from death to
+automatic restart, with the message appearing 4 s in. The countdown counts down *through* those
+four seconds rather than starting after them — `Interface`’s separate timer only drives the flash,
+and the reference having two timers that do almost the same thing is not reproduced.
 ### 7.10 Input
 
 The sim must never read the keyboard (Law 6). `PoPHost` samples the keyboard into a value type:
@@ -1873,6 +1919,8 @@ Where to look when you have a question. Keep this table current.
 | M6d | The medium landing calls `damageLife`, not a bare `health -= 1` | `damageLife` calls `die` at one health; the inlined version left a Prince at zero health and alive |
 | M6d | `timeUp` ends the run rather than going to level 16 | Level 16 is a cutscene, and cutscenes are not ported. The effect and the handling are both real; only the destination differs |
 | — | The artwork faces left, so facing *right* is the mirrored case | `Actor`’s constructor does `scale.x *= -charFace`. The port had it inverted, which read as the Prince walking backwards in both directions |
+| — | Dying restarts the level on a key *press*, taken as the rising edge of the input | The reference listens on a key-down callback; `Intents` is a held state, so a literal copy would restart the level the instant a running player died |
+| — | A restart is a full reload, and does not carry health | `Game.reset` rebuilds the level. Carrying health is what a *level change* does, and dying is not progress |
 | Ledge | `tryGrabEdge` is two probes, front (reach 30) then overhead (reach 20) | The second catches a Prince who has drifted past the edge and is falling down its face |
 | Ledge | `charX` stays `Int`; the fractional swing is carried in `ledgeSwingHalves` | `checkLedgeSwing` adds 1.5 a tick, the only fractional `charX` in the engine. Carrying the half reproduces the whole units exactly |
 | Ledge | `grabWait` counts six ticks rather than reading a clock | The same substitution as the potion delay: 500 ms at 1/12 s |

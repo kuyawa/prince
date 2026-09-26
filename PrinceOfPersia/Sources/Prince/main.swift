@@ -144,8 +144,11 @@ if arguments.contains("--trace") {
     let ticks = value(for: "--ticks", in: arguments).flatMap(Int.init) ?? 30
     var sounds: [SoundEffect] = []
     var music: [PoPCore.MusicTrack] = []
+    var restarted = false
     scene.onSound = { sounds.append($0) }
     scene.onMusic = { music.append($0) }
+    // The death wait reports itself, so a headless run can be watched through to a restart.
+    scene.onRestart = { restarted = true }
     print("tick  actor        action           frame   x    y  bx by  hp  op")
     for tick in 1...ticks {
         scene.step()
@@ -168,6 +171,10 @@ if arguments.contains("--trace") {
         if !music.isEmpty {
             print("      music: " + music.map(\.fileName).joined(separator: ", "))
             music.removeAll(keepingCapacity: true)
+        }
+        if restarted {
+            print("      --- the wait is over: restart the level ---")
+            break
         }
     }
     fflush(stdout)

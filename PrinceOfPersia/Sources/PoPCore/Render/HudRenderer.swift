@@ -41,6 +41,7 @@ public enum HudRenderer {
         world: World,
         clock: GameClock,
         ticksInLevel: Int,
+        death: DeathSequence = DeathSequence(),
         font: BitmapFont
     ) -> HudDescription {
         var hud = HudDescription()
@@ -71,9 +72,16 @@ public enum HudRenderer {
             }
         }
 
-        // The text: the level's name first, then whatever the clock has to say.
+        // The text: the death message takes over from everything, then the level's name, then
+        // whatever the clock has to say.
+        //
+        // `showsMessage` and `isMessageVisible` are not the same thing. The first says the
+        // message is up; the second says it is drawn *this* tick, because it flashes once the
+        // countdown gets short.
         let message: String
-        if ticksInLevel < levelTitleTicks {
+        if death.showsMessage {
+            message = death.isMessageVisible ? DeathSequence.message : ""
+        } else if ticksInLevel < levelTitleTicks {
             message = "LEVEL \(world.level.data.number)"
         } else {
             switch clock.readout {
