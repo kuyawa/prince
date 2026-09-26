@@ -29,10 +29,83 @@ public enum GameData {
         "kid", "fighter", "shadow", "vizier", "princess", "mouse",
     ]
 
+    /// The SwiftPM resource bundle, looked for only where it can actually be.
+    /// **`Bundle.module` is deliberately not used.** SwiftPM generates an accessor that bakes an
+    /// absolute path into the binary at compile time:
+    ///
+    /// ```swift
+    /// let mainPath = Bundle.main.bundleURL.appendingPathComponent("PrinceOfPersia_PoPCore.bundle")
+    /// let buildPath = "/Users/you/Documents/.../.build/release/PrinceOfPersia_PoPCore.bundle"
+    /// let bundle = Bundle(path: mainPath) ?? Bundle(path: buildPath)
+    /// ```
+    ///
+    /// Two things are wrong with that, and both bite.
+    ///
+    /// The first candidate is `Bundle.main.bundleURL` plus the bundle name, which inside an `.app`
+    /// is the app *itself* rather than `Contents/Resources` — so it misses every time.
+    ///
+    /// The fallback is an absolute path into the source tree of whoever compiled it. On macOS that
+    /// tree is almost always under `~/Documents`, which is **TCC-protected**, so the game asks the
+    /// player for permission to read their Documents folder on launch — to find a resource bundle
+    /// that is already inside the app. It also means a shipped `.app` would work on the build
+    /// machine and `fatalError` on any other.
+    ///
+    /// So the search is done here, over directories that belong to the app.
+    static let resourceBundleName = "PrinceOfPersia_PoPCore.bundle"
+
+    /// Where the resource bundle might be, in order, and nowhere else.
+    static var resourceBundleDirectories: [URL] {
+        let container = Bundle.main.bundleURL
+
+        // An app bundle. `Contents/Resources` and nothing else: looking beside the `.app` would
+        // mean reading the directory it was built in, which is the TCC problem above.
+        if container.pathExtension == "app" {
+            return [Bundle.main.resourceURL].compactMap { $0 }
+        }
+
+        // A bare executable, which is `swift run` and `swift build` output: the bundle sits either
+        // beside the binary or one level up from it. A test bundle is `.xctest/Contents/MacOS/x`,
+        // so one level up from the container is `.build/<config>`.
+        var directories: [URL] = []
+        if let executable = Bundle.main.executableURL?.deletingLastPathComponent() {
+            directories.append(executable)
+        }
+        directories.append(container)
+        directories.append(container.deletingLastPathComponent())
+        return directories
+    }
+
+    static var resourceBundle: Bundle? {
+        for directory in resourceBundleDirectories {
+            let candidate = directory.appendingPathComponent(resourceBundleName)
+            if let bundle = Bundle(url: candidate) { return bundle }
+        }
+
+        // Only now, and only for `swift test`. SwiftPM runs the suite under its own helper
+        // binary inside the Xcode toolchain, so `Bundle.main` is that helper and every path
+        // derived from it is wrong — the real bundle sits beside the `.xctest` in `.build`.
+        // `Bundle.module` knows that path because it was baked in at compile time, which is
+        // exactly what makes it unsafe as a *primary* source: it reads into the source tree,
+        // and on macOS that means `~/Documents`.
+        //
+        // Reaching it here is harmless, because a test only ever runs on the machine that built
+        // it. A launched `.app` finds its own bundle above and never evaluates this at all —
+        // `Bundle.module` is a lazy `static let`, so an unread property is an unread path.
+        return Bundle.module
+    }
+
     /// Root of the bundled `Resources` directory.
     public static var rootURL: URL {
-        guard let url = Bundle.module.url(forResource: "Resources", withExtension: nil) else {
-            fatalError("Resources directory is missing from the PoPCore bundle")
+        guard let bundle = resourceBundle,
+              let url = bundle.url(forResource: "Resources", withExtension: nil)
+        else {
+            let looked = resourceBundleDirectories
+                .map { $0.appendingPathComponent(resourceBundleName).path }
+                .joined(separator: "\n    ")
+            fatalError("""
+                Could not find \(resourceBundleName). Looked in:
+                    \(looked)
+                """)
         }
         return url
     }

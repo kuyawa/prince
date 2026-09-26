@@ -1535,6 +1535,37 @@ wrong shape for this codebase, and the reason is the test loop. The risky part o
 second. An Xcode project would put the fast loop behind a GUI, and the bundle is twenty lines of
 `cp` either way, so the project would buy nothing that the script does not.
 
+#### `Bundle.module` reads into `~/Documents`, so it is not used
+
+SwiftPM generates a resource-bundle accessor with an absolute path baked into the binary at
+compile time:
+
+```swift
+let mainPath = Bundle.main.bundleURL.appendingPathComponent("PrinceOfPersia_PoPCore.bundle")
+let buildPath = "/Users/you/Documents/.../.build/release/PrinceOfPersia_PoPCore.bundle"
+let bundle = Bundle(path: mainPath) ?? Bundle(path: buildPath)
+```
+
+Both halves are wrong for an app bundle. The first candidate is `Bundle.main.bundleURL` plus the
+bundle name, which inside a `.app` is the app *itself* rather than `Contents/Resources`, so it
+misses every time. The fallback is an absolute path into whoever compiled it's source tree — and
+on macOS that tree is almost always under `~/Documents`, which is **TCC-protected**. So the game
+asked the player for permission to read their Documents folder on launch, to find a resource
+bundle that was already inside the app. It also meant the `.app` ran on the build machine and
+would `fatalError` on any other.
+
+That it worked at all was the fallback doing the work: the app was loading its levels out of
+`.build/`, not out of itself.
+
+`GameData` now searches a short list of directories that belong to the app — `Contents/Resources`
+when it is inside a `.app`, and beside or one level up from the executable otherwise — and never
+looks outside. `Bundle.module` survives as a **last** resort, reached only by `swift test`, whose
+`Bundle.main` is SwiftPM's helper binary in the Xcode toolchain rather than anything to do with
+this package. It is a lazy `static let`, so an app that finds its own bundle never evaluates it,
+and an unevaluated path is an unread one.
+
+**Verified by hiding the build directory.** With `PrinceOfPersia/.build` renamed away, the app
+still launches and loads level 3 — which it could not have done before.
 #### Closing the window quits
 
 AppKit does not terminate when the last window closes. The default is right for an app with
@@ -1758,6 +1789,7 @@ Where to look when you have a question. Keep this table current.
 | — | Sim single-threaded, `@MainActor` | Actor hops have no ordering guarantee; determinism wins |
 | M0 | `swift-tools-version: 6.2`, `.macOS(.v26)` | 6.0's manifest has no `.v26` platform case; 6.2 verified building on Swift 6.3.3 |
 | M0 | Window scale is a runtime switch, not a compile-time constant | Guaranteed free to change by Law 8; `--scale N` and a View menu, capped to the display |
+| M9 | `GameData` finds the resource bundle itself instead of using `Bundle.module` | SwiftPM’s accessor falls back to an absolute path into the source tree, which on macOS is TCC-protected `~/Documents` — so the game asked for Documents access on launch, and only ran on the machine that built it |
 | M9 | Closing the last window quits the app | There is one window and no document, so leaving the process alive means an invisible game behind a Dock icon |
 | M9 | A Window menu with Close and Minimise | Without a Cmd-W menu item the close button is the only way to close the window, and the quit-on-close rule would rarely be reached |
 | M9 | The `.app` is assembled by a script, not an Xcode project | The risky part is the simulation, and SwiftPM is what makes its tests run in half a second. The bundle is twenty lines of `cp` either way |
