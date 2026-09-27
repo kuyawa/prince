@@ -55,9 +55,9 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **M9 — the `.app`, the icon, key bindings, distribution, quit-on-close.** 339 tests pass |
+| **Last completed** | **What the screen actually shows** — neighbouring rooms, and where a room sits in the window. 364 tests pass |
 | **Blocked on** | nothing |
-| **Open questions** | 8, listed in `ARCHITECTURE.md` §10 |
+| **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
 
 ---
@@ -517,6 +517,33 @@ Tick these off as they land. Full "done when" criteria are in `ARCHITECTURE.md` 
   rather than about the code. Left honestly undone rather than faked.
 - **Shift is a modifier**, so it never arrives as a key-down in a local event monitor. It is
   sampled from `NSEvent.modifierFlags`, which also keeps it right across focus changes.
+
+---
+
+### What the screen actually shows ✅ *complete*
+
+Two rendering faults, reported as one: *walls and gates at the left border are not drawn; the gate
+can be heard opening but not seen, and cannot be walked past.*
+
+- [x] **Neighbouring rooms are drawn.** `LevelBuilder` builds every room into one display list and
+      lets the camera crop, and a 60 px cel in a 32 px cell means the left neighbour's last column
+      owns the leftmost 28 px of every screen. `RoomRenderer.strips` now emits the bands that
+      reach: left column 9, above row 2, below row 0 — in the reference's build order.
+- [x] **The room sits at the top of the screen.** `LevelScene.roomTopY` was `roomHeight`, which
+      fitted the 189 px grid above the status bar and dropped every room by 11 px: a black band
+      across the top and the floor buried under the bar. It is `screenHeight`.
+
+**Notes:**
+- **The gate was never missing, it was off-screen.** A gate one room to the left has its back panel
+  at `x = -32` and its 8 px front panel at `x = 0`; the port drew neither, so the Prince walked into
+  something he could hear and not see. `Level.js#checkGates` looks like the code that hides gates,
+  but `Gate.isVisible` only mutes their sound.
+- **The seed of a wall drawn from the left room is the left room's**, `row * 10 + column + thatRoom`.
+  Passing the drawn room's number would name a frame that exists and looks wrong.
+- **Order matters where the overhangs collide.** `LevelBuilder` walks the map's bottom row first, so
+  below precedes left and above comes last; the strips are emitted in that order.
+- **Open question 4 is closed by this.** `UI_HEIGHT = 8` and the room's grid is *not* fitted above
+  it — the cels' 3 px tail ends exactly on the bar.
 
 ---
 

@@ -17,6 +17,83 @@ private func levelOne() throws -> LevelRuntime {
 
 // MARK: - Tile sprites
 
+// MARK: - The neighbours whose cels overhang into this room
+
+@Test func aRoomDrawsItsLeftNeighbourAtTheLeftEdgeOfTheScreen() throws {
+    let level = try levelOne()
+
+    // The reference builds *every* room into the same two display lists and lets the camera do
+    // the cropping (`Level.addTile` never asks which room is current). A tile cel is 60 px wide
+    // inside a 32 px cell, so a room's last column starts 32 px into its left neighbour — and
+    // that neighbour's screen has 28 px of it showing along its own left edge.
+    let strips = RoomRenderer.strips(for: 1, in: level)
+    #expect(strips.map(\.room) == [5, 2, 1])
+
+    let left = try #require(strips.first)
+    #expect(left.room == 5)
+    #expect(left.columns == 9..<10)
+    #expect(left.dx == -Geometry.roomWidth)
+
+    let sprites = RoomRenderer.sprites(for: left, level: level, world: nil, prefix: "dungeon")
+
+    // Room 1 is at map (6, 0) and room 5 at (5, 0); column 9 of room 5 is a gate at row 0.
+    let panel = try #require(sprites.first { $0.frameName == "dungeon_gate" })
+    #expect(panel.x == -Geometry.blockWidth)
+    // Gate.js puts the front child at (32, 16), which is what puts the open gate's edge exactly
+    // on the screen's left column instead of 32 px off it.
+    let front = try #require(sprites.first { $0.frameName == "dungeon_gate_fg" })
+    #expect(front.x == 0)
+    #expect(front.y == -RoomRenderer.tileOverhang + 16)
+
+    // The wall below it carries room 5's room number in its seed, not room 1's: the shape and
+    // the seed are both read in the room the tile belongs to.
+    #expect(sprites.contains { $0.frameName == "WWS_24" })
+    #expect(sprites.contains { $0.frameName == "dungeon_wall_0" })
+}
+
+@Test func theRoomsAboveAndBelowOverhangIntoThisOne() throws {
+    let level = try levelOne()
+
+    // Room 12 is at map (1, 1): room 16 sits above it and room 19 below. A room is 189 px tall
+    // and a cel 79 px against a 63 px cell, so a neighbour's nearest row reaches 3 px over the
+    // top edge and 16 px over the bottom one, above the status bar.
+    let strips = RoomRenderer.strips(for: 12, in: level)
+
+    let above = try #require(strips.first { $0.room == 16 })
+    #expect(above.dy == -Geometry.roomHeight)
+    #expect(above.rows == 2..<3)
+    #expect(above.columns == 0..<Geometry.roomColumns)
+
+    let below = try #require(strips.first { $0.room == 19 })
+    #expect(below.dy == Geometry.roomHeight)
+    #expect(below.rows == 0..<1)
+
+    // Bottom row of the room below: 0 * 63 - 13 + 189.
+    let sprites = RoomRenderer.sprites(for: below, level: level, world: nil, prefix: "dungeon")
+    #expect(sprites.allSatisfy { $0.y >= Geometry.roomHeight - RoomRenderer.tileOverhang })
+}
+
+@Test func aRoomWithNoNeighbourOnASideDrawsOnlyItself() throws {
+    let level = try levelOne()
+
+    // Room 22 is the top-left corner of the map, so nothing is above it or to its left — but
+    // room 15 is directly below it.
+    let strips = RoomRenderer.strips(for: 22, in: level)
+    #expect(strips.map(\.room) == [15, 22])
+    #expect(strips.allSatisfy { $0.dx >= 0 && $0.dy >= 0 })
+}
+
+@Test func theLeftNeighbourIsDrawnBeforeThisRoomAndTheUpperOneAfter() throws {
+    let level = try levelOne()
+
+    // A later sprite draws over an earlier one at the same z, and the strips do collide: a
+    // wall's side face and a gate's panel are drawn 32 px into the cell to their right, which
+    // is this room's first column. LevelBuilder walks the map's bottom row first and left to
+    // right within a row, so below precedes left, and above comes last.
+    let order = RoomRenderer.strips(for: 12, in: level).map(\.room)
+    #expect(order == [15, 19, 12, 16])
+}
+
 @Test func tileSpritesSitOnTheReferenceGrid() throws {
     let level = try levelOne()
     let description = RoomRenderer.describe(level: level, room: 1)
@@ -34,8 +111,14 @@ private func levelOne() throws -> LevelRuntime {
 
 @Test func everyTileEmitsABackgroundAndAForeground() throws {
     let level = try levelOne()
-    let description = RoomRenderer.describe(level: level, room: 1)
-    let tiles = description.sprites.filter { $0.anchor == .topLeft }
+
+    // The room's own band, not the whole screen: `describe` also draws the neighbours whose
+    // 60 px cels overhang into it, and those tiles are not what this test is counting.
+    let own = try #require(RoomRenderer.strips(for: 1, in: level).first {
+        $0.room == 1 && $0.dx == 0 && $0.dy == 0
+    })
+    let tiles = RoomRenderer.sprites(for: own, level: level, world: nil, prefix: "dungeon")
+        .filter { $0.anchor == .topLeft }
 
     #expect(tiles.filter { $0.z == RoomRenderer.tileBackgroundZ }.count == Geometry.tilesPerRoom)
     #expect(tiles.filter { $0.z == RoomRenderer.tileForegroundZ }.count == Geometry.tilesPerRoom)

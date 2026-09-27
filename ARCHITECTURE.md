@@ -1430,6 +1430,67 @@ Two arithmetic notes. Sixty minutes is **43,200 ticks** of 1/12 s, not 3,600 —
 empties the hourglass after five minutes. And the final minute reads `remainingMinutes == 1`, not 0:
 the countdown reaches zero only on the same tick that expires it, which is exactly why the bar
 switches to a seconds readout for that minute.
+### 7.9.15 The neighbours are on screen too
+
+`LevelBuilder.buildFromJSON` builds **every** room of the level, and `Level.addTile` adds each tile
+to `level.back` and `level.front` whichever room it came from. Nothing hides a neighbouring room's
+sprites; the camera is the only thing that crops. `Level.js#checkGates` looks as though it hides
+things, but `Gate.isVisible` only mutes the gate's *sound*.
+
+That is not an implementation detail, because **a tile cel is 60 px wide inside a 32 px cell**. The
+art overhangs 28 px past its own cell on the right, and three frames reach further still:
+
+| Frame | Art within the cel | What it is |
+|---|---|---|
+| `<prefix>_wall_<modifier>` | columns 32..56 | a wall's side face, drawn one cell to the right |
+| `<prefix>_gate` | columns 32..51 | a gate's back panel |
+| `<prefix>_gate_fg` | a child at `(32, 16)`, 8 px wide | a gate's front panel, on the next cell's left edge |
+
+So the leftmost 28 px of every room's screen belongs to the left neighbour's last column, and a
+gate one room away is an 8 px sliver standing at screen `x = 0`. The port drew only the current
+room, so the Prince could hear a gate rise, walk into it, and never see it — the gate in the next
+room was not on screen at all.
+
+Three of the four neighbours reach a room's 320 × 200 window:
+
+| Neighbour | Drawn | Placed at | Shows |
+|---|---|---|---|
+| left | column 9 | `x = −320` | 28 px |
+| above | row 2 | `y = −189` | 3 px below the top edge |
+| below | row 0 | `y = +189` | 16 px above the status bar |
+| right | column 0 | `x = +320` | nothing — every part of a tile is offset rightwards from there |
+
+`RoomRenderer.strips` emits those three bands around the room's own, each carrying the room it
+belongs to. Tile state and `dungeonWallFrames` both read a tile's neighbours *in its own room*, so
+the seed of a wall drawn from the room to the left is `row * 10 + column + thatRoom`, not this one.
+
+Order is load-bearing: the frames above collide with the neighbouring room's own art, and a later
+sprite draws over an earlier one at the same z. `LevelBuilder` walks the map's bottom row first and
+left to right within a row, so **below precedes left, and above comes last**.
+
+### 7.9.16 Where the room sits in the window
+
+A room's cell grid is 320 × 189, but a tile cel is 79 px tall against a 63 px cell, so the art
+starts 13 px above its cell and ends 3 px below it. **A drawn room is 320 × 205 in a 320 × 200
+screen.**
+
+The reference's camera for map row *r* sits at `r * ROOM_HEIGHT`, and a tile lands at
+`row * BLOCK_HEIGHT - 13`. On screen the room's cell grid therefore runs from −13 to 176, and the
+cels' 3 px tail ends at 192 — exactly the top of the 8 px status bar, which `Interface` places at
+`(SCREEN_HEIGHT - UI_HEIGHT) * SCALE_FACTOR`.
+
+The port anchored the room's y = 0 at `roomHeight` instead, fitting the 189 px grid between y = 11
+and y = 200. That slides the whole room down by the height of the status bar: an 11 px black band
+across the top of every room, and the bottom row's floor graphic pushed under the bar, where only
+the first five of its sixteen rows survived.
+
+The whole of the flip is one constant, and it is the *screen* height — a room's y is measured
+downward from its top, so a sprite lands at `roomTopY - sprite.y`:
+
+```swift
+public static let roomTopY = CGFloat(Geometry.screenHeight)
+```
+
 ### 7.15 Which way the artwork faces
 
 ```js
@@ -1851,8 +1912,12 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
 3. ~~**Coordinate representation**~~ — **RESOLVED in M2.** `Int` throughout, in the engine's
    own units: `charX` in x-units (140/room), `charY` in pixels (189/room). The `+0.5` is
    render-only. See §7.4.
-4. **Screen geometry** — room is 320 × 189 inside a 320 × 200 screen. How is the remaining
-   11 px reconciled with `UI_HEIGHT = 8`? Check SDLPoP at M4.
+4. ~~**Screen geometry**~~ — **RESOLVED.** `UI_HEIGHT = 8`, so the bar is at screen y 192..200,
+   and the room's 320 × 189 *grid* is **not** fitted above it. The reference's camera puts the
+   room's y = 0 at the top of the screen, so the grid runs −13..176, the cels' 3 px tail ends at
+   192, and the bar covers the last three rows of the bottom row's cel and nothing else. The
+   port had anchored the grid between y = 11 and y = 200 with `roomTopY = roomHeight`, which
+   drops everything by the height of the bar. See §7.9.16.
 5. **Level chain and cutscenes** — how the 14 levels, 12a/12b split, princess level and the
    shadow sequence are ordered. Read `Cutscene.js` and `Game.js` before M8.
 6. **SDLPoP-only extensions** — fake tiles, added tile+modifier combos. Opt-in extras, off by
@@ -1890,8 +1955,10 @@ plumbing. If it is wrong, nothing downstream will ever feel correct.
    again. `LevelBuilder.getTileObjectAt` applies all four offsets independently, against the
    *original* room's grid position, so a corner lookup crosses both axes at once.
    `LevelRuntime.tile` implements the `Level.getTileAt` form, which is what the simulation
-   uses; the renderer's wall-shape probe only varies x, where the two agree. If a future
-   feature needs corner resolution, it needs the second form, not a tweak to the first.
+   uses; the renderer's wall-shape probe only varies x — including for the neighbour strips of
+   §7.9.15, where probing off the end of the left room's last column chains into the room being
+   drawn — and on that axis the two forms agree. If a future feature needs corner resolution,
+   it needs the second form, not a tweak to the first.
 12. **Palace wall colour overlays** — dungeons pick pre-drawn wall-shape frames, but a
    *palace* wall is composited at runtime: `LevelBuilder` fills a `bitmapData` with
    `wallColor[wallPattern[roomId][…]]` and adds a `W_<seed>` child. `wallPattern` is generated by
@@ -1973,6 +2040,10 @@ Where to look when you have a question. Keep this table current.
 | M7c-2 | `SpriteMetrics` reads cel sizes from the atlas JSON into `PoPCore` | `chopDistance` and `checkBarrier` both measure Phaser sprite centres, and a sprite is as wide as its current frame. The table is data, not a framework, and a headless test can reach it |
 | M7c-2 | `chopDistance` measures the live state, not the previous tick’s sprite | The reference reads a transform that `updateCharPosition` left stale. That lag is a Phaser artefact; the DOS original had none |
 | M7c-2 | `Chopper.frameIndex` is 5 when idle, never 0 | There is no frame 0 in the atlas: `update` increments before naming a frame |
+| Render | `RoomRenderer` draws the neighbours whose cels overhang into the room | The reference builds every room into one display list and lets the camera crop, and a 60 px cel in a 32 px cell means the left neighbour's last column owns the leftmost 28 px of the screen. Without it a gate one room away is audible, solid and invisible |
+| Render | `RoomRenderer.strips` places the left neighbour at `-roomWidth`, not at `-blockWidth` | The offset is where the room's *origin* goes, so that its column 9 lands on this room's `x = -32` |
+| Render | The neighbour strips are emitted below, left, self, above | `LevelBuilder` walks the map's bottom row first and left to right within a row, and a later sprite draws over an earlier one at the same z where the overhangs collide |
+| Render | `LevelScene.roomTopY` is the screen height, not the room height | The room's cell grid is 189 px but its cels make it 205 px tall. Anchoring the grid above the status bar drops every room by 11 px: a black band at the top and the floor buried under the bar |
 | M7c | Spikes, potions and swords are trobs, driven by actors rather than by buttons | The reference raises a field from inside the actor’s own check; a button-driven model would miss the case where two actors disturb the same field |
 | M7c | `checkSpikeFloor` is separate from `FallCycle.checkFloorStanding` | Raising a field mutates the world; the falling branch only reads. The guard duplication is deliberate and the branches are mutually exclusive |
 | M7c | Potion effects are queued as `PendingPotion` on `World` and applied twelve ticks later | The reference delays them 1000 ms so the drink animation reads; twelve ticks is that second without a clock |

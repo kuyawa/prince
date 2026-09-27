@@ -36,17 +36,39 @@ public enum RoomRenderer {
         room: Int,
         actors: [ActorState] = []
     ) -> RenderDescription {
-        var sprites: [SpriteInstance] = []
         let prefix = level.data.type == .dungeon ? "dungeon" : "palace"
+        var sprites: [SpriteInstance] = []
 
-        for row in 0..<Geometry.roomRows {
-            for column in 0..<Geometry.roomColumns {
-                let tile = level.tile(x: column, y: row, room: room)
-                let baseX = column * Geometry.blockWidth
-                let baseY = row * Geometry.blockHeight - tileOverhang
+        for strip in strips(for: room, in: level) {
+            sprites.append(contentsOf: Self.sprites(
+                for: strip, level: level, world: world, prefix: prefix
+            ))
+        }
+
+        for actor in actors {
+            sprites.append(contentsOf: describe(actor))
+        }
+
+        return RenderDescription(room: room, sprites: sprites)
+    }
+
+    /// Every sprite one band of tiles contributes, placed relative to the room being drawn.
+    static func sprites(
+        for strip: Strip,
+        level: LevelRuntime,
+        world: World?,
+        prefix: String
+    ) -> [SpriteInstance] {
+        var sprites: [SpriteInstance] = []
+
+        for row in strip.rows {
+            for column in strip.columns {
+                let tile = level.tile(x: column, y: row, room: strip.room)
+                let baseX = column * Geometry.blockWidth + strip.dx
+                let baseY = row * Geometry.blockHeight - tileOverhang + strip.dy
 
                 for part in tileParts(
-                    for: tile, level: level, world: world, room: room,
+                    for: tile, level: level, world: world, room: strip.room,
                     column: column, row: row, prefix: prefix
                 ) {
                     sprites.append(SpriteInstance(
@@ -62,11 +84,74 @@ public enum RoomRenderer {
             }
         }
 
-        for actor in actors {
-            sprites.append(contentsOf: describe(actor))
+        return sprites
+    }
+
+    /// A band of tiles that lands on this room's screen, and where it lands.
+    ///
+    /// **The reference builds every room of the level into the same two display lists and lets
+    /// the camera do the cropping.** `LevelBuilder.buildFromJSON` calls `buildRoom` for all of
+    /// them, and `Level.addTile` appends to `level.back` and `level.front` whichever room the
+    /// tile belongs to — nothing hides a neighbouring room's sprites. `Level.js#checkGates`
+    /// looks as though it does, but `Gate.isVisible` only mutes the gate's *sound*.
+    ///
+    /// It matters because a tile cel is 60 px wide inside a 32 px cell: the art overhangs 28 px
+    /// past its own cell on the right, and a wall's backing frame and a gate's moving panel are
+    /// drawn 32 px into the *next* cell again. A room therefore paints into its neighbours'
+    /// screens, and the leftmost 28 px of every room's screen belongs to the left neighbour's
+    /// last column — a wall's side face, or the edge of a gate that is standing open.
+    ///
+    /// Three of the four neighbours can reach this room's 320 x 200 window:
+    ///
+    /// - the room to the **left**, column 9, at `x = -32`, of which 28 px shows;
+    /// - the room **above**, row 2, at `y = -76`, of which 3 px shows below the top edge;
+    /// - the room **below**, row 0, at `y = 176`, of which 16 px shows above the status bar.
+    ///
+    /// The room to the right starts at `x = +320` and every part of a tile is offset rightwards
+    /// from there, so it can never reach the screen. It is left out rather than drawn invisible.
+    ///
+    /// Order matters, because the three strips collide: a later sprite draws over an earlier one
+    /// at the same z. `LevelBuilder` walks the map's bottom row first and left to right within a
+    /// row, so the room below comes before the room to the left, and the room above comes after
+    /// this one.
+    static func strips(for room: Int, in level: LevelRuntime) -> [Strip] {
+        var strips = [Strip(room: room, dx: 0, dy: 0,
+                            columns: 0..<Geometry.roomColumns, rows: 0..<Geometry.roomRows)]
+
+        guard let links = level.placement(of: room)?.links else { return strips }
+
+        // The map row below this one is built first.
+        if links.down > 0, level.placement(of: links.down) != nil {
+            strips.insert(Strip(room: links.down, dx: 0, dy: Geometry.roomHeight,
+                                columns: 0..<Geometry.roomColumns, rows: 0..<1), at: 0)
         }
 
-        return RenderDescription(room: room, sprites: sprites)
+        // Then, within the same map row, left to right.
+        if links.left > 0, level.placement(of: links.left) != nil {
+            strips.insert(Strip(room: links.left, dx: -Geometry.roomWidth, dy: 0,
+                                columns: (Geometry.roomColumns - 1)..<Geometry.roomColumns,
+                                rows: 0..<Geometry.roomRows), at: 0)
+        }
+
+        // The map row above is built last of all.
+        if links.up > 0, level.placement(of: links.up) != nil {
+            strips.append(Strip(room: links.up, dx: 0, dy: -Geometry.roomHeight,
+                                columns: 0..<Geometry.roomColumns,
+                                rows: (Geometry.roomRows - 1)..<Geometry.roomRows))
+        }
+
+        return strips
+    }
+
+    /// One band of a room's tiles, placed relative to the room being drawn.
+    struct Strip: Equatable {
+        /// The room the tiles belong to. Tile state and `dungeonWallFrames` both read the
+        /// neighbours of a tile in *its own* room, not in the room being drawn.
+        var room: Int
+        var dx: Int
+        var dy: Int
+        var columns: Range<Int>
+        var rows: Range<Int>
     }
 
     // MARK: - Frame selection

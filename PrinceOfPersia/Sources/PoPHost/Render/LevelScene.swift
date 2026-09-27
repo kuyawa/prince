@@ -8,13 +8,23 @@ import PoPCore
 /// itself lives in `PoPCore.Simulation`, so a duel can be run with no window at all.
 @MainActor
 public final class LevelScene: SKScene {
-    /// Where the room's top edge sits in SpriteKit's y-up space.
+    /// Where the room's y = 0 lands in SpriteKit's y-up space.
     ///
-    /// The room is 320 x 189 inside a 320 x 200 screen. Anchoring its top at 189 leaves the bottom
-    /// 11 px free — the gap ARCHITECTURE.md open question 4 flags for the status bar. The
-    /// reference's own y is measured downward from the room's top, so this single constant is the
-    /// whole of the flip.
-    public static let roomTopY = CGFloat(Geometry.roomHeight)
+    /// **It is the top of the *screen*, not the height of the room.** A room's cell grid is
+    /// 320 x 189, but a tile cel is 79 px tall against a 63 px cell, so the art starts 13 px
+    /// above its cell and ends 3 px below it: the drawn room is 320 x 205. In the reference the
+    /// camera sits at `rooms[room].y * ROOM_HEIGHT` and a tile lands at `y * BLOCK_HEIGHT - 13`,
+    /// which puts the top 13 px of the top row above the screen and the bottom of the bottom row
+    /// flush with the status bar at y = 192.
+    ///
+    /// Anchoring at `roomHeight` instead — the room's cell grid fitted between y = 11 and
+    /// y = 200 — drops everything by the height of the status bar: an extra black band across
+    /// the top, and the bottom row's floor graphic pushed under the bar, so only its first few
+    /// rows survive.
+    ///
+    /// The room's y is measured downward from its top, so this single constant is the whole of
+    /// the flip.
+    public static let roomTopY = CGFloat(Geometry.screenHeight)
 
     private var simulation: Simulation
     private let input: KeyboardInput

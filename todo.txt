@@ -1,0 +1,8 @@
+TODO:
+
+
+DONE:
+
+- Some walls and gates at the left border are not drawn
+  (the room to the left is drawn too; and the room now sits at the top of the screen,
+   not 11 px below it)
