@@ -110,6 +110,15 @@ The save is a single number:
 Delete it to start over. It is ignored if it is missing, unreadable, or names a level that does
 not exist — the game will not refuse to start because of a bad save file.
 
+### The window size is remembered too
+
+**Pick a scale from the View menu and the next launch opens at it.** It is written to
+`window.json` next to the save, and it is clamped to whatever the current display can hold — a
+scale chosen on a big screen opens smaller on a laptop rather than hanging off the bottom.
+
+`--scale N` is an override for that one launch, not a new setting, so a screenshot command cannot
+quietly change what you chose. Deleting `window.json` puts the default 2× back.
+
 > **This is an addition, not a port.** Neither the 1989 original nor PrinceJS saves anything:
 > `Boot.js` hardcodes level 1, and the game was designed to be played in one sitting against a
 > sixty-minute hourglass. Resuming is a modern convenience bolted onto a 1989 game, and it is
@@ -209,7 +218,7 @@ swift run Prince --no-audio                   # silent
 
 | Flag | Does |
 |---|---|
-| `--scale N` | Window scale, 1–8, capped to the display |
+| `--scale N` | Window scale, 1–8, capped to the display, for this launch only |
 | `--level N` | Start on level 1–14, whatever the save says |
 | `--new-game` | Forget the save and start at level 1 |
 | `--room N` | Start in a specific room |

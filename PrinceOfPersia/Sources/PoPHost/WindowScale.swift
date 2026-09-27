@@ -69,12 +69,18 @@ public enum WindowScale {
         return min(bounded, largest)
     }
 
-    /// Reads `--scale N` from the command line; falls back to `standard`.
-    public static func scale(from arguments: [String]) -> Int {
+    /// Reads `--scale N` from the command line, or `nil` when the flag is absent.
+    ///
+    /// This only *parses* the flag. What an absent flag should mean is a question about what the
+    /// player chose last time, and that belongs to `WindowSettings.startingScale`, which is also
+    /// where the value is clamped to the display. Returning `standard` here would erase the
+    /// difference between "the player asked for 2" and "the player asked for nothing" — and that
+    /// difference is the whole of what is being decided.
+    public static func requestedScale(from arguments: [String]) -> Int? {
         guard let index = arguments.firstIndex(of: "--scale"),
               index + 1 < arguments.count,
               let value = Int(arguments[index + 1])
-        else { return standard }
-        return fitted(value)
+        else { return nil }
+        return value
     }
 }

@@ -60,6 +60,10 @@ public final class WindowController: NSWindowController {
         scale = normalized
         window?.setContentSize(WindowScale.windowSize(for: normalized))
         window?.center()
+        // Remembered, so the next launch opens the size the player last chose. What is written is
+        // the scale the display actually allowed, not the one that was asked for — a remembered 8
+        // on a laptop would otherwise be a preference the player can never see take effect.
+        WindowSettings.save(scale: normalized)
         report()
     }
 

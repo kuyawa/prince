@@ -77,7 +77,11 @@ func intents(named name: String) -> Intents {
 }
 
 let arguments = CommandLine.arguments
-let scale = WindowScale.scale(from: arguments)
+// The window scale: `--scale` for this launch, otherwise what the player last chose from the View
+// menu, otherwise the default. See `WindowSettings`.
+let scale = WindowSettings.startingScale(
+    requested: WindowScale.requestedScale(from: arguments)
+)
 
 // Where to start. An explicit --level wins, then the save, then the beginning — so quitting on
 // level 7 and relaunching comes back to level 7. --new-game throws the save away.

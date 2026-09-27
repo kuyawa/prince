@@ -688,6 +688,17 @@ one value in this project that is genuinely free to change:
 - **Runtime:** the **View** menu, **Cmd-1** through **Cmd-N**
 - **Default:** 2× (640 × 400), mirroring `SCALE_FACTOR` from PrinceJS `Boot.js`
 
+The menu **remembers**: choosing a scale writes `WindowSettings` to
+`~/Library/Application Support/PrinceOfPersia/window.json`, and the next launch opens at it. A
+switch that resets itself every launch is a switch the player stops touching.
+
+`--scale` is an **override for one launch, not a new preference.** It is a diagnostic in the same
+family as `--level`, and quietly rewriting the player's menu choice because a screenshot command
+passed a flag would be a surprise. So `WindowScale.requestedScale` only *parses* the flag — it
+answers `nil`, not `standard`, when the flag is absent, because "asked for the default" and "asked
+for nothing" are different questions and erasing the difference is exactly what made the setting
+unrememberable. `WindowSettings.startingScale` decides the precedence, and clamps once.
+
 Because `PoPCore` works exclusively in the original 320 × 200 pixel units and the renderer
 scales at the last possible moment, changing this **cannot** affect gameplay, timing or
 collision. If a future change makes the scale leak into `PoPCore`, that is a Law 8
@@ -2090,6 +2101,10 @@ Where to look when you have a question. Keep this table current.
 | Input | The diagnostic scene is only built when a diagnostic flag needs it | The interactive run builds its own through `GameCoordinator`; building a second one loaded the level, its simulation and its atlases twice before the window appeared |
 | Input | A bound key is only swallowed while `KeyboardInput` is the only instance listening | Swallowing exists to stop AppKit beeping, which is a courtesy; losing a key to another monitor is not. This makes a repeat of the bug audible instead of silent |
 | Input | Held keys are released on `NSApplication.didResignActiveNotification` | A `keyUp` follows the active app, so a key held while switching away stays down for ever and the Prince walks off on his own when the player returns |
+| M9 | The View menu remembers the window scale, in `window.json` | The switch exists to be used, and one that resets every launch is one the player stops touching. Law 8 makes it free: it cannot affect a frame of gameplay |
+| M9 | `--scale` is an override for one launch and is not saved | It is a diagnostic in the same family as `--level`; rewriting the player's menu choice because a screenshot passed a flag would be a surprise |
+| M9 | `WindowScale.requestedScale` returns `Int?`, not a defaulted `Int` | "Asked for the default" and "asked for nothing" are different questions, and erasing the difference is what made the setting unrememberable. Precedence and clamping live once, in `WindowSettings.startingScale` |
+| M9 | Window preferences live in `window.json`, not in `progress.json` | One is a save that `--new-game` throws away; the other must outlive it. Two files, two failure modes, neither able to break the other |
 | M6d | `ActorState.action` is a computed property whose setter rewinds `sequencePointer` | That is what the reference’s `action` setter does. As a stored property it worked everywhere except `startFall`, which skipped a `stepfall`’s `ACT 3` and cascaded into `actionCode`, `checkFloor` and `fallingBlocks` |
 | M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |
 | M6d | `Splash.show` is called before the action changes | `showSplash` refuses the four self-bloodying death animations, so the order decides whether a killing blow bleeds |

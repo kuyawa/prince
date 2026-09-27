@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **One keyboard for the process** — a second `KeyboardInput` was swallowing every arrow. 367 tests pass |
+| **Last completed** | **The window size is remembered** — the View menu writes `window.json`, `--scale` stays an override. 377 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -603,6 +603,30 @@ Reported as: *on app start sometimes keys don't respond, sometimes they do.*
 - **No unit test covers this.** It needs a real event loop and a real key event; the guards are
   the single owner, the counter, and the note on the class. Both build configurations were run by
   hand, with a synthetic arrow from `osascript`.
+
+---
+
+### The window size is remembered ✅ *complete*
+
+Asked for as: *remember the resolution I set last time when restarting the app.*
+
+- [x] **The View menu writes the scale to `window.json`**, beside the save in Application Support,
+      and the next launch opens at it.
+- [x] **`--scale` is an override for one launch, not a new setting.**
+- [x] **`WindowScale.requestedScale(from:)` returns `Int?`.** It only parses the flag; the
+      precedence and the clamp to the display live once, in `WindowSettings.startingScale`.
+
+**Notes:**
+- **A separate file from `progress.json`, on purpose.** One is a save that `--new-game` throws
+  away; the other has to outlive it. Two files, two failure modes, neither able to break the other.
+- **Clamped on read, never rewritten.** A scale remembered on a big display opens at the largest
+  that fits on a laptop, and the file keeps the larger number — the other display may come back.
+- **The bug this closes is a shape, not a value.** `WindowScale.scale(from:)` fell back to
+  `standard`, which erased the difference between "asked for 2" and "asked for nothing", so there
+  was nowhere to put a remembered value even if one had been stored.
+- **Verified by driving the real menu.** `osascript` clicks 5x, the file becomes `{"scale": 5}`,
+  the app is killed and relaunched with no flags, and the window comes back 1600 wide. Ten unit
+  tests cover the reading: round trip, missing file, corrupt file, out-of-range, and precedence.
 
 ---
 
