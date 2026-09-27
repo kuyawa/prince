@@ -1535,6 +1535,39 @@ functions now take an optional `gatePosition`, and `Barrier.checkBarrier` suppli
 `world.trob(x:y:room:)?.gate?.position` at the two places it measures a gate. `nil` means "not a
 gate", which is every other tile in the level.
 
+### 7.9.17a The renderer reads the world's tiles, not the level's
+
+`LevelRuntime` is the decoded level and **never changes**. Everything that does — a board that has
+given way, the debris it leaves, a potion that has been drunk, a spike field that has retracted —
+lives in `LevelState.overrides`, keyed by `TileRef`:
+
+```swift
+public mutating func openHole(at ref: TileRef) {
+    overrides[ref] = Tile(kind: .space, modifier: 0)
+}
+```
+
+`World.tile(x:y:room:)` applies them, which is why the simulation lets the Prince fall through a
+board the moment it starts to drop. `RoomRenderer` was calling `level.tile(x:y:room:)` — the
+immutable level — so the drawing never followed: **the Prince fell through a board that was still
+drawn in place**, and the floor never looked broken.
+
+`RoomRenderer.sprites(for:level:world:prefix:)` now asks the world first and falls back to the
+level. One change, and it covers every override there is: the hole a board leaves, the debris it
+lands as, a taken potion and sword, a retracted spike field.
+
+The board itself is a separate matter. `Level.floorStartFall` replaces the tile *outright*, so the
+falling board is no longer a tile at all — it is the sprite it always was, and `Loose.update`
+moves it by `FALL_VELOCITY * step` a tick, clear of the cell it left. `LooseBoard.fallOffset` is
+that accumulated displacement, and the renderer draws `_falling` at it. Without that the hole would
+appear and the board would simply vanish, which is a different wrong.
+
+```
+intact   dungeon_11  dungeon_11_fg
+falling  dungeon_0   dungeon_falling      <- the hole, and the board dropping through it
+landed   dungeon_0   dungeon_0_0  dungeon_0_fg
+```
+
 ### 7.9.18a `CMD_DOWN` goes down a room, not down a floor
 
 `Kid` has two opcodes for moving between rooms vertically, and they are not symmetrical:
@@ -2227,6 +2260,8 @@ Where to look when you have a question. Keep this table current.
 | M9 | `WindowScale.requestedScale` returns `Int?`, not a defaulted `Int` | "Asked for the default" and "asked for nothing" are different questions, and erasing the difference is what made the setting unrememberable. Precedence and clamping live once, in `WindowSettings.startingScale` |
 | M9 | Window preferences live in `window.json`, not in `progress.json` | One is a save that `--new-game` throws away; the other must outlive it. Two files, two failure modes, neither able to break the other |
 | Physics | `CMD_DOWN` calls `changeRoomDown`, as `Kid.CMD_DOWN` does | The opcode shifts `charY` by the room height and resets `charBlockY`; the reference leaves the *room* to `changeRoomDown`, and the port had dropped the call. The Prince climbed down into row 0 of the room he was already in |
+| Render | `RoomRenderer` reads tiles through the world, not the level | `LevelRuntime` never changes; a hole, debris, a taken potion and a retracted spike field are all `LevelState.overrides`. Reading the level drew a board the Prince could already fall through |
+| Render | A falling board is drawn at `LooseBoard.fallOffset` | `Level.floorStartFall` replaces the tile outright, so the board is no longer a tile — it is the sprite it always was, moving `FALL_VELOCITY * step` a tick. Otherwise the hole appears and the board vanishes, which is a different wrong |
 | Host | `--watch` prints the simulation's state once a tick | A report of "he fell into the wrong room" cannot be answered from a screenshot: whether the simulation moved the room and the screen did not, or the simulation never moved it, is the whole question |
 | Physics | `Kid.checkRoomChange` reproduces the reference's twenty-frame early return | It is the first statement in the function, so it skips the `charY` test too. The port had left it out on the stated grounds that it could not affect that test, which is the one thing it does affect |
 | M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |

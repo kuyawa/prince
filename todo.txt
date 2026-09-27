@@ -1,10 +1,12 @@
 TODO:
 
-- When floor tiles fall, the floor is not drawn with a hole, tiles are still in place but the prince can go down through them
 - Sword of first guard sometimes is shown, sometimes is not
+- Drinking bottles should show the bottle both on the floor and in prince's hand at the same time, when prince grabs the bottle it shuold remove the bottle on the floor
 
 DONE:
 
+- When floor tiles fall, the floor is not drawn with a hole, tiles are still in place but the prince can go down through them
+  (the renderer read the level, not the world, so it never saw the hole override)
 - When hanging from a hole in the floor in the first level it doesn't draw the room below, it draws the same room and falls to the same room, it should land on the room below
   (CMD_DOWN moved the prince's y by a room height but never the room; Kid.CMD_DOWN
    calls changeRoomDown and the port had dropped it. Found with --watch)

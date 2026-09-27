@@ -63,7 +63,12 @@ public enum RoomRenderer {
 
         for row in strip.rows {
             for column in strip.columns {
-                let tile = level.tile(x: column, y: row, room: strip.room)
+                // **Through the world, not the level.** A board that has given way is a hole in
+                // the floor from that moment on, and the hole is an *override* — `LevelState`
+                // replaces the tile and `LevelRuntime` never changes. Reading the level directly
+                // drew the board where the Prince could already fall through it.
+                let tile = world?.tile(x: column, y: row, room: strip.room)
+                    ?? level.tile(x: column, y: row, room: strip.room)
                 let baseX = column * Geometry.blockWidth + strip.dx
                 let baseY = row * Geometry.blockHeight - tileOverhang + strip.dy
 
@@ -228,17 +233,13 @@ public enum RoomRenderer {
             let ref = TileRef(room: room, x: column, y: row)
             let board = world?.state.trob(at: ref)?.looseBoard ?? LooseBoard()
 
-            // Loose.js swaps the BACK frame as the board shakes and then drops away.
-            let background: String
-            switch board.phase {
-            case .shaking:
+            // Loose.js swaps the BACK frame as the board shakes. The `.falling` and `.inactive`
+            // phases never reach here: the moment a board gives way the tile underneath it is
+            // replaced with a space, and this is no longer a board — see the hole below.
+            let background = board.phase == .shaking
                 // `this.key + Loose.frames[this.step]`, and frames run "_loose_1" ... "_loose_8".
-                background = "\(prefix)_loose_\(min(board.step + 1, LooseBoard.shakeFrames))"
-            case .falling:
-                background = "\(prefix)_falling"
-            case .inactive:
-                background = "\(prefix)_11"
-            }
+                ? "\(prefix)_loose_\(min(board.step + 1, LooseBoard.shakeFrames))"
+                : "\(prefix)_11"
 
             return [
                 TilePart(frame: background, z: tileBackgroundZ),
@@ -320,6 +321,18 @@ public enum RoomRenderer {
         if let detail = frames.backgroundDetail {
             parts.append(TilePart(frame: detail, z: tileBackgroundDetailZ))
         }
+
+        // A board that has given way leaves a hole, and the board itself keeps going: its sprites
+        // stay in the display list and its `y` advances by `FALL_VELOCITY * step` a tick, so it
+        // drops away below the floor rather than hovering in the gap it made.
+        if tile.kind == .space,
+           let board = world?.state.trob(at: TileRef(room: room, x: column, y: row))?.looseBoard,
+           board.phase == .falling {
+            parts.append(TilePart(
+                frame: "\(prefix)_falling", dy: board.fallOffset, z: tileBackgroundZ
+            ))
+        }
+
         parts.append(TilePart(frame: frames.foreground, z: tileForegroundZ))
         return parts
     }

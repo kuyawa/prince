@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **`CMD_DOWN` goes down a room** — the climb-down opcode moved the Prince's y but never the room. 384 tests pass |
+| **Last completed** | **A fallen board leaves a hole you can see** — the renderer was reading the level, not the world. 385 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -666,6 +666,29 @@ after    t166 room 1 (7,2) x112 y179 climbdown
   (also real, also fixed, also not this one).
 - **What broke the tie was data, not reading.** `--watch` prints room, block, position and action
   every tick, and the report turned on exactly those four things.
+
+---
+
+### A fallen board leaves a hole you can see ✅ *complete*
+
+Reported as: *when floor boards fall, the floor is not drawn with a hole — the boards are still in
+place even though the Prince can go down through them. If the boards fall, remove them.*
+
+- [x] **`RoomRenderer` reads tiles through the world, not the level.** `LevelRuntime` is the
+      decoded level and never changes; a hole is a `LevelState` *override*. The simulation applied
+      it and the drawing did not, so the Prince fell through a board that was still drawn.
+- [x] **A falling board is drawn at `LooseBoard.fallOffset`**, dropping clear of the cell it left,
+      rather than vanishing the instant the hole appears.
+
+**Notes:**
+- **One change covered every override.** The hole a board leaves, the debris it lands as, a taken
+  potion and sword, a retracted spike field — all of them live in `overrides`, and none of them
+  was reaching the renderer.
+- **`Level.floorStartFall` replaces the tile outright**, so the board stops being a tile the moment
+  it gives way. That is why the hole and the falling board are two separate things to draw.
+- The existing test `aShakingBoardDrawsItsShakeFrame` still passes unchanged; its sibling
+  `aFallenBoardDrawsTheFallingGraphic` now checks that `dungeon_11` is *absent*, which is the
+  whole point.
 
 ---
 

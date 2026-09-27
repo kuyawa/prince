@@ -330,3 +330,33 @@ private func boardRef() -> TileRef { TileRef(room: 1, x: 6, y: 2) }
     let description = RoomRenderer.describe(world: world, room: 1)
     #expect(description.sprites.contains { $0.frameName == "dungeon_falling" })
 }
+
+@Test func aBoardThatHasGivenWayLeavesAHoleInTheDrawing() throws {
+    // Reported as: the Prince can fall through a board that is still drawn, so the floor never
+    // looks broken. `Level.floorStartFall` replaces the room's tile outright — the hole is an
+    // *override*, and `LevelRuntime` never changes — so a renderer that reads the level instead of
+    // the world keeps drawing the board over a gap the Prince is already through.
+    var world = try worldOne()
+    let cell = { (s: [SpriteInstance]) in
+        s.filter { $0.x == 6 * Geometry.blockWidth && $0.y == 2 * Geometry.blockHeight - 13 }
+            .map(\.frameName).sorted()
+    }
+
+    let before = cell(RoomRenderer.describe(world: world, room: 1).sprites)
+    #expect(before.contains("dungeon_11"), "the board is drawn while it is whole")
+
+    world.shakeLooseBoard(at: boardRef())
+    for _ in 0..<9 { world.update() }
+
+    #expect(world.tile(x: 6, y: 2, room: 1).kind == .space, "the tile is gone")
+    let falling = cell(RoomRenderer.describe(world: world, room: 1).sprites)
+    #expect(!falling.contains("dungeon_11"), "the board is not drawn where the hole is")
+    #expect(falling.contains("dungeon_falling"), "it is drawn falling instead")
+
+    // And once it has fallen clear, not even that is left.
+    for _ in 0..<8 { world.update() }
+    let after = cell(RoomRenderer.describe(world: world, room: 1).sprites)
+    #expect(!after.contains("dungeon_11"))
+    #expect(!after.contains("dungeon_falling"))
+    #expect(after.contains("dungeon_0"), "a hole, and nothing else: \(after)")
+}

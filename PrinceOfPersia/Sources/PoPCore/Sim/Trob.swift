@@ -254,6 +254,13 @@ public struct LooseBoard: Sendable, Equatable {
         willFall = fall
     }
 
+    /// How far the board has dropped out of the cell it left — `Loose.update`'s `vacc`.
+    ///
+    /// It accelerates: `FALL_VELOCITY * step` accumulates each tick, so the offset is a triangle
+    /// number. The renderer draws the falling board that far down, which is what makes it fall
+    /// *away* from the hole instead of hovering in it.
+    public var fallOffset: Int { Self.fallVelocity * step * (step + 1) / 2 }
+
     /// `Loose.fallStarted` — the board is at the last shake frame and about to drop.
     public var fallStarted: Bool {
         phase == .shaking && step == Self.shakeFrames
@@ -293,7 +300,7 @@ public struct LooseBoard: Sendable, Equatable {
             step += 1
             // The reference accumulates displacement against a target height. The board is gone
             // once it has fallen clear of its cell, which is one tile's worth of travel.
-            if Self.fallVelocity * step * (step + 1) / 2 > Geometry.blockHeight {
+            if fallOffset > Geometry.blockHeight {
                 phase = .inactive
             }
             return nil
