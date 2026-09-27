@@ -72,12 +72,25 @@ public extension Tile {
     /// Four pixels wide, forty into the cell — which is eight pixels *past* a 32-pixel cell, in
     /// the next one. That is not a typo in the reference and it is not one here. It is the
     /// rectangle that catches an actor walking into a wall from the left.
-    func screenBounds(column: Int, row: Int) -> ScreenRect {
+    ///
+    /// **A gate overrides this, and the override is the whole reason a Prince can walk through
+    /// an open one.** `Gate.getBounds` shortens the strip by exactly as much as the gate has
+    /// risen:
+    ///
+    /// ```js
+    /// bounds.height = 63 - 10 + this.posY - 4;      // 49 shut, 2 fully raised
+    /// ```
+    ///
+    /// The strip is pinned to the *top* of the cell, so a raised gate leaves a 4 x 2 sliver
+    /// against the ceiling and nothing at all at floor level. Read the base rectangle instead and
+    /// a gate is a barrier whether it is open or shut — a Prince who can hear it rise, see it
+    /// rise, and still not walk through it.
+    func screenBounds(column: Int, row: Int, gatePosition: Int? = nil) -> ScreenRect {
         ScreenRect(
             x: column * Geometry.blockWidth + 40,
             y: row * Geometry.blockHeight,
             width: 4,
-            height: Geometry.blockHeight
+            height: gatePosition.map { Geometry.blockHeight - 14 + $0 } ?? Geometry.blockHeight
         )
     }
 
@@ -86,14 +99,21 @@ public extension Tile {
     /// Note it disagrees with `screenBounds` on purpose: this one uses the tile’s own origin,
     /// which carries the 13-pixel overhang, and the full cel width. Its height is a flat 63, not
     /// the cel height.
-    func screenBoundsAbs(column: Int, row: Int, atlas: String) -> ScreenRect {
+    ///
+    /// `Gate.getBoundsAbs` shortens this one too, by the same `posY`: `63 + this.posY`.
+    func screenBoundsAbs(
+        column: Int,
+        row: Int,
+        atlas: String,
+        gatePosition: Int? = nil
+    ) -> ScreenRect {
         ScreenRect(
             x: column * Geometry.blockWidth,
             y: row * Geometry.blockHeight - Geometry.tileOverhang,
             width: SpriteMetrics.width(
                 atlas: atlas, frame: "\(atlas)_\(collisionElement)"
             ) ?? 0,
-            height: Geometry.blockHeight
+            height: gatePosition.map { Geometry.blockHeight + $0 } ?? Geometry.blockHeight
         )
     }
 }

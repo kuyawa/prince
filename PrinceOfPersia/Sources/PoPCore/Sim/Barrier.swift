@@ -42,6 +42,20 @@ public enum Barrier {
         return false
     }
 
+    /// How far the gate at a position has risen, if there is one there.
+    ///
+    /// `Gate.getBounds` and `getBoundsAbs` are the only tile rectangles that depend on live
+    /// state, and both of them need this number. `nil` means "not a gate", which is every other
+    /// tile in the level.
+    private static func gatePosition(
+        in world: any TileWorld,
+        x: Int,
+        y: Int,
+        room: Int
+    ) -> Int? {
+        world.trob(x: x, y: y, room: room)?.gate?.position
+    }
+
     /// `Kid.checkBarrier`.
     @discardableResult
     public static func checkBarrier(
@@ -80,8 +94,12 @@ public enum Barrier {
             // A mirror is a barrier you walk *through* — the reference simply returns.
             if tile.kind == .mirror { return false }
 
-            let hit = tile.screenBounds(column: x, row: y).intersects(state.charBounds())
-                || (tile.screenBoundsAbs(column: x, row: y, atlas: atlas)
+            // A gate's rectangle shrinks as it rises, so an open one has nothing left at floor
+            // level to hit. Without that, `tile.isBarrier` alone keeps him out for ever.
+            let under = gatePosition(in: world, x: x, y: y, room: room)
+            let hit = tile.screenBounds(column: x, row: y, gatePosition: under)
+                .intersects(state.charBounds())
+                || (tile.screenBoundsAbs(column: x, row: y, atlas: atlas, gatePosition: under)
                         .intersects(state.charBoundsAbs())
                     && !state.swordDrawn)
             guard hit else { return false }
@@ -124,10 +142,13 @@ public enum Barrier {
                 return true
 
             case .gate, .tapestry, .tapestryTop:
-                let close = next.screenBounds(column: blockX, row: y)
+                let ahead = gatePosition(in: world, x: blockX, y: y, room: room)
+                let close = next.screenBounds(column: blockX, row: y, gatePosition: ahead)
                     .intersects(state.charBounds())
-                    || (next.screenBoundsAbs(column: blockX, row: y, atlas: atlas)
-                            .intersects(state.charBoundsAbs())
+                    || (next.screenBoundsAbs(
+                            column: blockX, row: y, atlas: atlas, gatePosition: ahead
+                        )
+                        .intersects(state.charBoundsAbs())
                         && !state.swordDrawn)
                 if Behaviour.moveL(state), close {
                     if state.action == "stand", tile.kind == .gate {

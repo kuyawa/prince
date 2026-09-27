@@ -108,6 +108,37 @@ private func princeWalkingAtWall() throws -> (World, ActorState) {
     #expect(mirror.screenBoundsAbs(column: 0, row: 0, atlas: atlas).width > 0)
 }
 
+// MARK: - A gate's rectangles shrink as it rises
+
+@Test func aRaisedGateLeavesNothingToHitAtFloorLevel() {
+    // `Gate.getBounds` is the one tile rectangle that depends on live state:
+    //
+    //     bounds.height = 63 - 10 + this.posY - 4;      // 49 shut, 2 fully raised
+    //
+    // The strip stays pinned to the top of the cell, so an open gate is a 4 x 2 sliver against
+    // the ceiling and the Prince walks straight under it. Reading `Tile.Base.getBounds` — a flat
+    // 4 x 63 — makes a gate a barrier whether it is open or shut, and the Prince can hear it
+    // rise, watch it rise and still not get through.
+    let gate = Tile(kind: .gate, modifier: 0)
+
+    #expect(gate.screenBounds(column: 4, row: 0, gatePosition: 0).height == 49)
+    #expect(gate.screenBounds(column: 4, row: 0, gatePosition: -47).height == 2)
+    // The ordinary tile rectangle is untouched.
+    #expect(gate.screenBounds(column: 4, row: 0).height == Geometry.blockHeight)
+
+    // `Gate.getBoundsAbs` shortens by the same `posY`: `63 + this.posY`.
+    let atlas = "dungeon"
+    #expect(gate.screenBoundsAbs(column: 4, row: 0, atlas: atlas, gatePosition: 0).height == 63)
+    #expect(gate.screenBoundsAbs(column: 4, row: 0, atlas: atlas, gatePosition: -47).height == 16)
+    #expect(gate.screenBoundsAbs(column: 4, row: 0, atlas: atlas).height == Geometry.blockHeight)
+
+    // And the consequence: a Prince's box at floor level is well clear of the raised one.
+    let floorHeight = 2 * Geometry.blockHeight
+    let prince = ScreenRect(x: 4 * 32 + 20, y: floorHeight + 14, width: 30, height: 41)
+    #expect(gate.screenBounds(column: 4, row: 2, gatePosition: 0).intersects(prince))
+    #expect(!gate.screenBounds(column: 4, row: 2, gatePosition: -47).intersects(prince))
+}
+
 // MARK: - Which actions are checked
 
 @Test func theCheckIsSkippedForActionsThatOwnTheirOwnMovement() {

@@ -1491,6 +1491,39 @@ downward from its top, so a sprite lands at `roomTopY - sprite.y`:
 public static let roomTopY = CGFloat(Geometry.screenHeight)
 ```
 
+### 7.9.17 A gate's collision rectangle shrinks as the gate rises
+
+`checkBarrier` opens with `tile.isBarrier()`, and `Tile.Base.isBarrier` answers **yes for a gate**
+— always, whatever its position. The open/closed test lives elsewhere, in `Gate.canCross(height)`,
+which `nearBarrier` and `canStep` consult. So `checkBarrier` is entitled to treat every gate as a
+barrier, and what stops an open one from being an obstacle is the *rectangle* it is measured with.
+
+`Gate` is the only tile class in the reference that overrides `Base.getBounds`:
+
+```js
+PrinceJS.Tile.Gate.prototype.getBounds = function () {
+  bounds.height = 63 - 10 + this.posY - 4;    // 49 shut, 2 fully raised
+  bounds.width  = 4;
+  bounds.x      = this.roomX * 32 + 40;
+  bounds.y      = this.roomY * 63;
+};
+
+PrinceJS.Tile.Gate.prototype.getBoundsAbs = function () {
+  return new Phaser.Rectangle(this.x, this.y, this.width, 63 + this.posY);
+};
+```
+
+The strip is pinned to the **top** of the cell, so raising the gate lifts it out of the way: a
+fully raised gate is a 4 x 2 sliver against the ceiling, and an actor at floor level has nothing
+left to intersect.
+
+The port had `screenBounds`/`screenBoundsAbs` building `Base`'s flat 4 x 63 and full-cel rectangles
+for every tile alike. A gate was therefore a barrier whether it was open or shut — a Prince who
+could hear the gate rise, watch it rise, and still bump against nothing at all, for ever. Both
+functions now take an optional `gatePosition`, and `Barrier.checkBarrier` supplies it from
+`world.trob(x:y:room:)?.gate?.position` at the two places it measures a gate. `nil` means "not a
+gate", which is every other tile in the level.
+
 ### 7.15 Which way the artwork faces
 
 ```js
@@ -2044,6 +2077,8 @@ Where to look when you have a question. Keep this table current.
 | Render | `RoomRenderer.strips` places the left neighbour at `-roomWidth`, not at `-blockWidth` | The offset is where the room's *origin* goes, so that its column 9 lands on this room's `x = -32` |
 | Render | The neighbour strips are emitted below, left, self, above | `LevelBuilder` walks the map's bottom row first and left to right within a row, and a later sprite draws over an earlier one at the same z where the overhangs collide |
 | Render | `LevelScene.roomTopY` is the screen height, not the room height | The room's cell grid is 189 px but its cels make it 205 px tall. Anchoring the grid above the status bar drops every room by 11 px: a black band at the top and the floor buried under the bar |
+| Collision | A gate's collision rectangle shrinks as it rises | `Gate` is the only tile class in the reference that overrides `Base.getBounds`, and that override is the only thing that lets a Prince walk through an open gate: `checkBarrier` treats every gate as a barrier and leaves the open/closed test to `canCross`. A flat 4 x 63 strip made an open gate as solid as a shut one |
+| Collision | The gate's position reaches the rectangles as an optional `gatePosition`, not by making `Tile` stateful | A `Tile` is a kind and a modifier and nothing else; live state belongs to `LevelState`. `nil` reads as "not a gate", which every other tile is |
 | M7c | Spikes, potions and swords are trobs, driven by actors rather than by buttons | The reference raises a field from inside the actor’s own check; a button-driven model would miss the case where two actors disturb the same field |
 | M7c | `checkSpikeFloor` is separate from `FallCycle.checkFloorStanding` | Raising a field mutates the world; the falling branch only reads. The guard duplication is deliberate and the branches are mutually exclusive |
 | M7c | Potion effects are queued as `PendingPotion` on `World` and applied twelve ticks later | The reference delays them 1000 ms so the drink animation reads; twelve ticks is that second without a clock |

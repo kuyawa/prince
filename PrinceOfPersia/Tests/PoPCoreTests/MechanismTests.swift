@@ -157,6 +157,48 @@ private func boardRef() -> TileRef { TileRef(room: 1, x: 6, y: 2) }
     #expect(world.state.isExitDoorOpen)
 }
 
+// MARK: - Through the gate
+
+@Test func thePrinceWalksThroughAGateThatHasRisen() throws {
+    // Level 1's room 5, row 0, read left to right:
+    //
+    //     PILLAR  TORCH  DROP_BUTTON  TORCH  RAISE_BUTTON  GATE  RAISE_BUTTON  SPACE  FLOOR  GATE
+    //
+    // The raise button at (4,0) indexes events[9] — gate (9,0) — whose `next` chains to events[10],
+    // the gate at (5,0). So walking right from the torch opens the gate in front of him and he
+    // should go straight through it.
+    //
+    // This is the whole of the bug it is guarding: `checkBarrier` asks `tile.isBarrier()`, which is
+    // true of a gate whatever its position, so the *rectangle* is what has to shrink. Read the
+    // base 4 x 63 strip and the Prince bumps against a gate that is standing wide open.
+    var data = try GameData.level(1)
+    data = data.replacingPrince(PrinceSpawn(location: 3, room: 5, direction: 1, danger: false))
+    var simulation = try Simulation(level: LevelRuntime(data), seed: 1)
+
+    let gate = TileRef(room: 5, x: 5, y: 0)
+    #expect(simulation.world.state.gate(at: gate)?.position == 0, "it starts shut")
+
+    for _ in 0..<70 { simulation.tick(intents: [.right]) }
+
+    #expect(simulation.world.state.gate(at: gate)?.position == -47, "the button raised it")
+    #expect(simulation.world.prince.charBlockX > 5, "and he is past it, not stuck under it")
+}
+
+@Test func aShutGateStillStopsHim() throws {
+    // The same room with the button never pressed. Nothing about the rectangle change makes a
+    // closed gate walkable: its strip is still 49 pixels tall and still catches him.
+    var data = try GameData.level(1)
+    data = data.replacingPrince(PrinceSpawn(location: 7, room: 5, direction: -1, danger: false))
+    var simulation = try Simulation(level: LevelRuntime(data), seed: 1)
+
+    let gate = TileRef(room: 5, x: 5, y: 0)
+    for _ in 0..<60 { simulation.tick(intents: [.left]) }
+
+    #expect(simulation.world.state.gate(at: gate)?.position == 0)
+    #expect(simulation.world.prince.charBlockX >= 5)
+    #expect(simulation.world.prince.charBlockX <= 6, "stopped at the gate, not through it")
+}
+
 // MARK: - Climbing out
 
 @Test func jumpingOnAnOpenExitClimbsTheStairs() throws {

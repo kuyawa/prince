@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **What the screen actually shows** — neighbouring rooms, and where a room sits in the window. 364 tests pass |
+| **Last completed** | **Walking through a gate that is standing open** — a gate's collision rectangle shrinks as it rises. 367 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -544,6 +544,32 @@ can be heard opening but not seen, and cannot be walked past.*
   below precedes left and above comes last; the strips are emitted in that order.
 - **Open question 4 is closed by this.** `UI_HEIGHT = 8` and the room's grid is *not* fitted above
   it — the cels' 3 px tail ends exactly on the bar.
+
+---
+
+### Walking through a gate that is standing open ✅ *complete*
+
+Reported as: *first level, a gate to the left opens but the prince can not walk pass it.*
+
+- [x] **A gate's collision rectangle shrinks as it rises.** `Gate` is the only tile class in the
+      reference that overrides `Base.getBounds`, and the port was building `Base`'s flat 4 x 63
+      strip for every tile alike. `screenBounds`/`screenBoundsAbs` now take the gate's position,
+      and `checkBarrier` supplies it from `world.trob(x:y:room:)?.gate?.position`.
+
+**Notes:**
+- **`checkBarrier` treats every gate as a barrier, on purpose.** `Tile.Base.isBarrier` answers yes
+  for a gate whatever its position; the open/closed test lives in `Gate.canCross`, which
+  `nearBarrier` and `canStep` consult. So the *rectangle* is the only thing that can let an open
+  gate through, and reading `Base`'s version made a raised gate as solid as a shut one.
+- **The strip is pinned to the top of the cell.** `height = 63 - 10 + posY - 4` is 49 shut and 2
+  fully raised, so a raised gate is a sliver against the ceiling and an actor at floor level has
+  nothing left to intersect.
+- **`Gate` is the only override.** `grep getBounds reference/PrinceJS/src/tiles/*.js` returns
+  `Base` and `Gate` and nothing else, so the exit door, the loose board and the chopper all keep
+  the plain rectangles.
+- **The reproduction is a walk, not a unit test.** Level 1's room 5 row 0 has a raise button at
+  (4,0), a gate at (5,0) and another button beyond it; the regression test drives the real
+  `Simulation` and asserts he is past column 5 when the gate reaches -47.
 
 ---
 
