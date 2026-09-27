@@ -76,6 +76,14 @@ public final class LevelScene: SKScene {
     /// Danger theme, so the coordinator needs to know that a level *started*, not just which one.
     public var onLevelStarted: ((_ level: Int, _ danger: Bool) -> Void)?
 
+    /// Every tick, in a form a bug report can quote. `--watch` in `main.swift` prints it.
+    ///
+    /// The scene already publishes sound, music, restarts and level starts; this is the same
+    /// shape for "what is the Prince doing". It exists because a report of the form "he falls
+    /// into the same room" cannot be answered from a screenshot — the room, the tile he is over
+    /// and the action name are what decide it, and only the simulation knows those.
+    public var onWatchedTick: ((_ tick: Int, _ state: ActorState) -> Void)?
+
     private var hasReportedFinish = false
     private var hasReportedStart = false
     /// Set when the hourglass empties. The scene stops ticking — there is nothing left to play.
@@ -176,6 +184,7 @@ public final class LevelScene: SKScene {
     public func step() {
         simulation.tick(intents: sampledIntents)
         ticksRun += 1
+        onWatchedTick?(ticksRun, simulation.world.prince)
 
         // `CMD_NEXTLEVEL` fires `onLevelFinished`, then `onNextLevel` after a delay that exists
         // purely to let the "Prince" theme finish — 13 seconds, or 9 on level 4 for the shadow.

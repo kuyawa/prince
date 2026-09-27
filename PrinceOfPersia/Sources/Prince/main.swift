@@ -257,6 +257,18 @@ if let path = value(for: "--screenshot", in: arguments), let scene = diagnosticS
             volume: value(for: "--volume", in: arguments).flatMap(Float.init) ?? 1
         ))
     )
+    // `--watch` prints one line per tick, which is what a report of the form "he fell into the
+    // wrong room" needs: the room, the tile under him and the action name, in order.
+    if arguments.contains("--watch") {
+        print("tick room  bx by    x    y  action")
+        coordinator.scene.onWatchedTick = { tick, prince in
+            print(String(format: "%4d %4d %3d %2d %4d %4d  %@",
+                         tick, prince.room, prince.charBlockX, prince.charBlockY,
+                         prince.charX, prince.charY, prince.action as NSString))
+            fflush(stdout)
+        }
+    }
+
     let controller = WindowController(
         initialScale: scale, view: view, scene: coordinator.scene
     )

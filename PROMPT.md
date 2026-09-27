@@ -630,11 +630,43 @@ Asked for as: *remember the resolution I set last time when restarting the app.*
 
 ---
 
-### Releasing a ledge ✅ *complete*
+### Releasing a ledge ⚠️ *fixed, and the report still stands*
 
-Reported as: *when hanging from the hole the loose board left in the first room, it shows the same
-room as expected, but releasing shift makes him fall back into the same room instead of the room
-below — while simply walking or running off the same hole works.*
+Reported as: *walk to the hole the loose board left in the first room, turn, hold shift and hang
+from the edge; the screen still shows the first floor, and releasing shift drops him back onto it.
+Walking or running off the same hole without shift falls through as it should.*
+
+- [x] **`Kid.startFall`'s hang branch is reproduced.** Releasing a ledge runs `hangfall` — let go
+      and go through — or `hangdrop` — let go and land — chosen on what is underneath him. The
+      port answered both with a bare `stepfall`, which is the action for *stepping off* a ledge.
+      This was a real gap: `hangfall` and `hangdrop` had been in `kid.json` all along, unused.
+- [ ] **The reported symptom is not reproduced in the simulation, so the item stays open.**
+
+**What the simulator does, driving the reported route** — walk right out of the starting cell,
+fall off the edge at `(4,1)`, run over the loose board at `(6,2)` until it gives way, turn back,
+stand at `(7,2)` facing right, press left + shift:
+
+```
+t 69 stepfall  room 1  bx 6  y 182      stepping off the edge into the hole\
+t 71 stepfall  room 2  bx 6  y   8      room already changed, one tick after the edge\
+```
+
+The room changes on the way down, before the grab, and the hang then happens **in room 2**, from
+room 1's hole lip — `hang` at room 2 `(5,0)`, whose tile above chains to room 1's `(5,2)`. Releasing
+runs `hangfall` and he lands on room 2's floor. Every position in the room was swept; there is no
+hang anywhere in room 1 that releases back into room 1 except `(3,0)`, where the tile underneath is
+a pillar and `hangdrop` is correct.
+
+**So the next step is data, not reasoning.** `--watch` prints one line per tick — room, block,
+position, action — which is exactly what decides this. Run:
+
+```bash
+"build/Prince of Persia.app/Contents/MacOS/Prince of Persia" --watch --new-game
+```
+
+reproduce, and the lines around the hang say whether the sim's `room` has changed while the screen
+has not (a host bug) or whether the hang really does resolve inside room 1 (a sim bug in a
+configuration the sweep does not reach).
 
 - [x] **`Kid.startFall`'s hang branch is reproduced.** Releasing a ledge runs `hangfall` — let go
       and go through — or `hangdrop` — let go and land — chosen on what is underneath him. The

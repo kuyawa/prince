@@ -232,9 +232,13 @@ Diagnostics:
 | Flag | Does |
 |---|---|
 | `--trace --ticks N` | Print the simulation tick by tick, with sounds and music |
+| `--watch` | Play normally, printing the room, tile, position and action every tick |
 | `--hold left,up` | Hold inputs for the run, for reproducible screenshots |
 | `--screenshot out.png` | Render one frame headlessly and exit |
 | `--dump-frame FRAME --atlas SHEET` | Render a single atlas frame at 1:1 |
+
+`--watch` is the one to reach for when the screen and the simulation seem to disagree: it is the
+only thing that says which room the game thinks the Prince is in.
 
 ```bash
 # Walk right for two hundred ticks and list every sound the game made.
