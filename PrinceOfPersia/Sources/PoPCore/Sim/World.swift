@@ -27,7 +27,7 @@ public struct World: Sendable {
         self.rng = LCG(seed: seed)
         self.strength = strength
 
-        var list = [ActorState.prince(from: level.data.prince)]
+        var list = [ActorState.prince(from: level.data.prince, levelNumber: level.data.number)]
         for spawn in level.data.guards {
             list.append(ActorState.enemy(from: spawn, levelNumber: level.data.number))
         }

@@ -10,7 +10,15 @@ public extension ActorState {
     /// this.kid = new PrinceJS.Kid(game, level, json.prince.location, direction, json.prince.room);
     /// if (turn) { this.kid.charX += 7; ... action = "turn" ... }
     /// ```
-    static func prince(from spawn: PrinceSpawn) -> ActorState {
+    ///
+    /// **The sword is a level question, not a spawn question.** `Kid`'s constructor is
+    /// `this.hasSword = PrinceJS.currentLevel > 1;` and `Game.js` only overwrites it when the
+    /// level actually carries a boolean (`if (typeof json.prince.sword === "boolean")`). **No
+    /// shipped level carries one**, so the level number is the answer everywhere: on level 1 he
+    /// starts empty-handed and `gotSword` is what arms him. The port read the absent key as
+    /// `true`, which nothing noticed while he could not draw a sword at all — and which would
+    /// have let him fight the first guard with a sword he had never picked up.
+    static func prince(from spawn: PrinceSpawn, levelNumber: Int) -> ActorState {
         var actor = ActorState(
             location: spawn.location,
             room: spawn.room,
@@ -19,7 +27,7 @@ public extension ActorState {
             charName: "kid"
         )
         if spawn.shouldTurn { actor.charX += 7 }
-        actor.hasSword = spawn.sword ?? true
+        actor.hasSword = spawn.sword ?? (levelNumber > 1)
         // The Prince's health comes from the run, not the level.
         actor.health = 3
         actor.maxHealth = 3

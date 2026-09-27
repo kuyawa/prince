@@ -10,12 +10,18 @@
 /// does nothing at all. That is why combat feels deliberate rather than mashable, and it is the
 /// single most important thing to preserve.
 ///
-/// ## What is omitted
+/// ## The two halves of a duel
 ///
-/// `canReachOpponent` is simplified to a distance test. The reference walks a tile path between
-/// the two fighters using `checkPathToOpponent`, which measures from `centerX` — Phaser sprite
-/// geometry, the same thing `checkBarrier` still owes (open question 11). The simplification
-/// means a guard may engage through a thin barrier that the original would have stopped at.
+/// `Fighter`'s verbs are shared; `Kid` overrides four things — `updateBehaviour`, `block`,
+/// `fastsheathe` and `startFall`. `GuardBrain` is the guard's half of the duel and has been
+/// complete since M6. **The Prince's half was wired to nothing at all.** `Behaviour.update` had
+/// a comment saying the combat arms were M6 and a `default: break` where they should have been,
+/// so he could never draw his sword: Shift is the *strike*, not the entry, and the stance is taken
+/// up without being asked. A missing `tryEngarde` therefore reads to a player as "the sword is
+/// never used". Those verbs are at the bottom of this file, under "The Prince's own verbs".
+///
+/// The two halves do **not** share frame windows, and must not be tidied into one set: the Prince
+/// parries on 158, 165 or 167, the guard on 8, 20, 21, 18, 15 or 17.
 public enum Combat {
     /// Reach in pixels beyond which a fighter will not close.
     public static let engageRange = 35
@@ -391,6 +397,136 @@ public enum Combat {
         f.allowBlock = false
     }
 
+    // MARK: - The Prince's own verbs
+
+    /// `Kid.tryEngarde` — the sword comes out **on its own**.
+    ///
+    /// Not a key. A standing Prince who has the sword, can reach an opponent and faces him draws
+    /// it without being asked, and that stance is what gives the strike key any meaning.
+    ///
+    /// Three details are easy to drop and all of them are load-bearing:
+    ///
+    /// - `blockEngarde` is set by `Barrier` on the landing branch of `Kid.land`: a Prince who
+    ///   arrives in a heap does not stand up into a fighting stance.
+    /// - `dodgeChoppers` runs *before* the reach test, so he takes the stance up from a position
+    ///   the blades no longer reach — the nudge only moves him a pixel or three, and the blade's
+    ///   reach is measured from where he ends up.
+    /// - The reach is 35 instead of 100 when the guard has his back turned and is sneaking, which
+    ///   is what makes an unaware guard walkable-up-to.
+    ///
+    /// `level.recheckCurrentRoom()` is the opponent search. In the port that belongs to the tick,
+    /// not to the verb; see `Simulation`.
+    @discardableResult
+    public static func tryEngarde(
+        _ f: inout ActorState, _ o: ActorState, world: any TileWorld, effects: inout [ActorEffect]
+    ) -> Bool {
+        guard f.hasSword, !f.blockEngarde else { return false }
+        dodgeChoppers(&f, world: world)
+
+        let engardeDistance = (!facingOpponent(o, f) && o.sneakUp) ? 35 : 100
+        guard o.isAlive, opponentDistance(f, o, world: world) <= engardeDistance else { return false }
+        return engarde(&f, world: world, effects: &effects)
+    }
+
+    /// `Kid.block` — the Prince's parry window, which is **not** the guard's.
+    ///
+    /// `Fighter.block` gates on 8, 20, 21, 18, 15 and 17; `Kid.block` on 158, 165 and 167, and it
+    /// makes a different test of the opponent. The port had only the `Fighter` version, because
+    /// only the guard half of the duel was wired.
+    ///
+    /// Returns whether the reference runs the sequence from inside the verb — its
+    /// `if (this.opponent.frameID(3)) { this.processCommand(); }`. The interpreter belongs to
+    /// `Behaviour`, so the caller runs it, exactly as `Behaviour.step` does for `setBump`.
+    ///
+    /// Note the shape of the early returns: a frame that cannot block leaves `allowBlock` **set**,
+    /// so a key pressed a frame early is carried rather than swallowed.
+    @discardableResult
+    public static func kidBlock(_ f: inout ActorState, _ o: ActorState) -> Bool {
+        var runSequence = false
+
+        if f.frameID(158) || f.frameID(165) {
+            // Frame 18 of a stab is the contact frame: there is nothing left to parry.
+            if o.frameID(18) { return false }
+            f.beginAction("block")
+            if o.frameID(3) { runSequence = true }
+        } else {
+            guard f.frameID(167) else { return false }
+            f.beginAction("striketoblock")
+        }
+
+        f.allowBlock = false
+        return runSequence
+    }
+
+    /// `Kid.fastsheathe` — down in the stance: the sword goes away and he runs rather than fights.
+    ///
+    /// **This is the one place the Prince reaches into his opponent**, which is why the opponent is
+    /// `inout`. `Kid`'s override is not the same function without it: it calls
+    /// `this.opponent.fastsheathe()` and then pushes the opponent's `refracTimer` out nine ticks,
+    /// so the fight really does stop rather than merely pausing on one side.
+    ///
+    /// `flee` is what he has bought: while it is set, `tryEngarde` is only reached with the
+    /// action key held, so he has to ask for the next fight.
+    public static func kidFastsheathe(_ f: inout ActorState, opponent o: inout ActorState?) {
+        f.flee = true
+        f.beginAction("fastsheathe")
+        f.swordDrawn = false
+
+        if var other = o {
+            fastsheathe(&other)
+            o = other
+        }
+    }
+
+    /// `Enemy.fastsheathe` — only a shadow obeys. Every other guard keeps his sword out, which is
+    /// why a Prince who flees a guard is still followed by one.
+    ///
+    /// A shadow is deactivated here as well as disarmed, which is `setInactive()` and not
+    /// `setActive()`'s visibility: it keeps whatever visibility it already had.
+    static func fastsheathe(_ f: inout ActorState) {
+        if f.charName == "shadow" {
+            f.isActive = false
+            f.hasStartedFight = false
+            f.beginAction("fastsheathe")
+            f.swordDrawn = false
+        }
+        f.refracTimer = 9
+    }
+
+    /// `Fighter.dodgeChoppers` — the small sideways nudge out of the blades.
+    ///
+    /// The band is asymmetric and the nudge is the exact amount that lands him 16 pixels out
+    /// either way. It exists so a stance is never taken up inside a chopper's reach.
+    static func dodgeChoppers(_ f: inout ActorState, world: any TileWorld) {
+        let distance = chopperDistance(f, world: world)
+        if distance >= 13, distance <= 16 {
+            f.charX -= 16 - distance
+        } else if distance >= -16, distance <= -13 {
+            f.charX += distance + 16
+        }
+        f.updateBlockPosition()
+    }
+
+    /// `Fighter.chopperDistance` — the gap to a blade on his column or the one in front.
+    ///
+    /// 999 is the reference's own sentinel and is why `dodgeChoppers` tests bands rather than
+    /// equality. A skeleton is answered 999 outright, as the reference returns `undefined` for one.
+    static func chopperDistance(_ f: ActorState, world: any TileWorld) -> Int {
+        if f.charName == "skeleton" { return 999 }
+        for column in [f.charBlockX, f.charBlockX + 1] {
+            guard world.tile(x: column, y: f.charBlockY, room: f.room).kind == .chopper,
+                  nearChopDistance(f, column: column, world: world)
+            else { continue }
+            return TileChecks.chopDistance(f, tileColumn: column, levelAtlas: world.atlasName)
+        }
+        return 999
+    }
+
+    /// `Fighter.nearChopDistance` — within 16 screen pixels of the blade's centre.
+    static func nearChopDistance(_ f: ActorState, column: Int, world: any TileWorld) -> Bool {
+        abs(TileChecks.chopDistance(f, tileColumn: column, levelAtlas: world.atlasName)) <= 16
+    }
+
     /// `Fighter.stabbed` — taking a hit.
     public static func stab(_ f: inout ActorState, effects: inout [ActorEffect]) {
         guard f.isAlive else { return }
@@ -478,12 +614,19 @@ public enum Combat {
     ///
     /// Takes both fighters, because the reference has each reach into the other: an `engarde`
     /// fighter whose opponent has turned away turns them back.
+    ///
+    /// Returns `true` when the fight is over and the caller should drop its reference to the
+    /// opponent. That is the reference's `this.opponent = null`, in the same branch that sheathes
+    /// the sword, and it is not bookkeeping: a caller that keeps looking only for *living* guards
+    /// stops calling this the moment one dies, so the Prince is left standing in his stance for
+    /// ever with his sword out and no way to put it away.
+    @discardableResult
     public static func checkFight(
         _ f: inout ActorState,
         _ o: inout ActorState,
         world: any TileWorld,
         effects: inout [ActorEffect]
-    ) {
+    ) -> Bool {
         // A standing guard squares up to an opponent twenty pixels away or more.
         if f.charName != "kid", f.isActive, f.action == "stand",
            inSameRoom(f, o), !facingOpponent(f, o), f.charX > 0, o.charX > 0,
@@ -492,30 +635,31 @@ public enum Combat {
             f.beginAction("turn")
         }
 
-        guard f.hasStartedFight else { return }
+        guard f.hasStartedFight else { return false }
 
         if f.blocked, f.action != "strike" {
             retreat(&f)
             f.blocked = false
-            return
+            return false
         }
 
         let distance = opponentDistance(f, o, world: world)
-        if distance == -999 { return }
+        if distance == -999 { return false }
 
         switch f.action {
         case "engarde":
             if !o.isAlive {
                 sheathe(&f)
+                return true
             } else if distance < -4 {
                 if !facingOpponent(f, o) { turnengarde(&f, o, effects: &effects) }
                 if !facingOpponent(o, f) { turnengarde(&o, f, effects: &effects) }
             }
 
         case "strike":
-            guard f.charBlockY == o.charBlockY else { return }
-            guard o.action != "climbstairs" else { return }
-            guard f.frameID(153, 154) || f.frameID(3, 4) else { return }
+            guard f.charBlockY == o.charBlockY else { return false }
+            guard o.action != "climbstairs" else { return false }
+            guard f.frameID(153, 154) || f.frameID(3, 4) else { return false }
 
             if !o.frameID(150), !o.frameID(0) {
                 if f.frameID(154) || f.frameID(4) {
@@ -536,5 +680,6 @@ public enum Combat {
         default:
             break
         }
+        return false
     }
 }

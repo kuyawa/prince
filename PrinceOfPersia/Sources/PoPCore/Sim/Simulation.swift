@@ -192,6 +192,11 @@ public struct Simulation: Sendable {
         appliedEffectCount = 0
         pressedIntents = intents
 
+        // `Game.checkForOpponent`, before anyone is stepped. The Prince's behaviour asks whether he
+        // can reach his opponent and `checkFight` runs for both fighters, so it has to be settled
+        // before either of them runs.
+        updatePrinceOpponent()
+
         // Guards first, matching the reference's creation order.
         for index in world.actors.indices.dropFirst() {
             step(actorAt: index, intents: .none)
@@ -263,12 +268,15 @@ public struct Simulation: Sendable {
 
         // `updateBehaviour` — input for the Prince, the guard brain for everyone else.
         if index == 0 {
-            let prince = actor
+            // The opponent goes in as a copy and comes back out, the way the reference's live
+            // object reference would: `Kid.fastsheathe` is the one verb that writes to it.
+            let foeIndex = opponentIndex(for: 0)
+            var foe = foeIndex.map { world.actors[$0] }
             try? Behaviour.update(
                 &actor, intents: intents, world: world,
-                interpreter: interpreter, effects: &effects
+                interpreter: interpreter, opponent: &foe, effects: &effects
             )
-            _ = prince
+            if let foeIndex, let foe { world.actors[foeIndex] = foe }
         } else {
             var rng = world.rng
             GuardBrain.update(
@@ -296,9 +304,15 @@ public struct Simulation: Sendable {
         if let opponent = opponentIndex(for: index) {
             var mine = world.actors[index]
             var other = world.actors[opponent]
-            Combat.checkFight(&mine, &other, world: world, effects: &effects)
+            let released = Combat.checkFight(
+                &mine, &other, world: world, effects: &effects
+            )
             world.actors[index] = mine
             world.actors[opponent] = other
+            // The guard died and the Prince has just sheathed his sword. The reference drops its
+            // reference to the opponent in that same branch; a stale one would keep him in a
+            // fighting stance, or turn him back to face a corpse.
+            if index == 0, released { princeOpponent = nil }
         }
 
         // `checkSpikes` — raise every spike field in this column, and in the next one along when
@@ -363,20 +377,62 @@ public struct Simulation: Sendable {
 
     /// Who an actor is fighting.
     ///
-    /// **Simplified.** The reference sets `this.opponent` when a fight begins and the two
-    /// reference each other. Here a guard always faces the Prince, and the Prince faces the
-    /// nearest living guard in his room — which is the same pairing in every non-combat case and
-    /// differs only when three or more fighters converge.
+    /// Every guard fights the Prince, which is the pairing the reference ends up with in every
+    /// non-combat case. The Prince fights whoever `Game.checkForOpponent` last found for him —
+    /// see `princeOpponent`, which is sticky and may name a guard who has since died.
     public func opponentIndex(for index: Int) -> Int? {
         if index != 0 {
             return world.actors[0].isAlive ? 0 : nil
         }
+        return princeOpponent
+    }
+
+    // MARK: - The Prince's opponent
+
+    /// `Game.checkForOpponent` — the Prince's opponent, and the one piece of combat state that
+    /// outlives a tick.
+    ///
+    /// The reference holds a live reference to this guard, which is why nothing there has to
+    /// remember it. A value-type world does, and the reason it cannot simply be looked up fresh
+    /// each tick is the **kill**: the search only ever returns a *living* guard, so a query that
+    /// died with the guard would stop `Fighter.checkFight` from running on exactly the tick that
+    /// sheathes the Prince's sword — and he is then left standing in his stance for ever, with his
+    /// sword out and no verb that can put it away.
+    private var princeOpponent: Int?
+
+    /// The four-pass search, in the reference's order, stopping at the first hit.
+    ///
+    /// Assigns only when it *finds* someone, which is what makes the opponent sticky. A new
+    /// opponent also ends the flight from the old one (`kid.flee = false`), so a Prince who fled
+    /// one guard still fights the next.
+    private mutating func updatePrinceOpponent() {
         let prince = world.actors[0]
-        return world.actors.indices.dropFirst()
-            .filter { world.actors[$0].isAlive && world.actors[$0].room == prince.room }
-            .min {
-                abs(world.actors[$0].charX - prince.charX)
-                    < abs(world.actors[$1].charX - prince.charX)
-            }
+        guard prince.isAlive else { return }
+
+        guard let found = princeOpponentSearch(prince), found != princeOpponent else { return }
+        princeOpponent = found
+        world.actors[0].flee = false
+    }
+
+    /// Same room on his row, then the neighbouring rooms on his row, then the room whatever row,
+    /// then the neighbours whatever row.
+    private func princeOpponentSearch(_ prince: ActorState) -> Int? {
+        let candidates = world.actors.indices.dropFirst()
+            .filter { world.actors[$0].isAlive }
+
+        let sameRow = { (index: Int) in
+            world.actors[index].charBlockY == prince.charBlockY
+        }
+        let here = { (index: Int) in
+            world.actors[index].room == prince.room
+        }
+        let near = { (index: Int) in
+            Combat.opponentNearRoom(prince, world.actors[index], world: world)
+        }
+
+        return candidates.first { sameRow($0) && here($0) }
+            ?? candidates.first { sameRow($0) && near($0) }
+            ?? candidates.first { here($0) }
+            ?? candidates.first { near($0) }
     }
 }

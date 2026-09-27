@@ -4,6 +4,15 @@ TODO:
 
 DONE:
 
+- Once I pick up the sword and get to the first guard the prince doesn't fight with the guard, the sword is never used, pressing shift does nothing, and the guard kills the prince every time
+  (the Prince's half of the duel was never wired. Kid.updateBehaviour calls
+   tryEngarde from its `stand` case before it looks at any movement key — the
+   sword comes out on its own and Shift is the *strike* — and the six combat
+   arms were a `default: break`. So he could never leave `stand` for a stance,
+   Shift had nowhere to go, and an unarmed Kid dies to the first blow. The
+   opponent is now sticky state on Simulation, too: a living-only lookup cannot
+   see the kill that sheathes his sword, which would have locked him in his
+   stance for ever after winning)
 - Sword of first guard sometimes is shown, sometimes is not
   (the renderer read the level, not the world, so a taken sword stayed drawn on the floor)
 - Drinking potions shows the bottle both on the floor and in prince's hand at the same time, when prince grabs the bottle it should remove the bottle on the floor

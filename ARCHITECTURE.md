@@ -1689,6 +1689,81 @@ Walking or running off the same hole was always right, because that path goes th
 `checkFloorStanding` rather than through here. Only the ledge was wrong, which is why it looked
 like a hang bug rather than a falling one.
 
+### 7.9.20 The Prince's half of a duel, which was missing entirely
+
+The duel is symmetric in the reference. `Fighter` carries the verbs and **`Kid` overrides four of
+them** — `updateBehaviour`, `block`, `fastsheathe` and `startFall` (plus `turn`, which has a
+combat branch of its own). M6 ported `Fighter`'s verbs and `Enemy`'s mind, which is the **guard's**
+half; the Prince's half was never wired to anything. `Behaviour.update` said so in a comment —
+"the combat arms have their own file; see `Combat`" — above a `default: break`, and its `stand`
+case had a second comment where the entry should have been.
+
+What that costs a player:
+
+- **`tryEngarde` is not a key.** `stand` calls it *before* it looks at any movement key, and the
+  only tests are "has the sword", "can reach an opponent", "is facing him". The sword comes out on
+  its own. So a missing entry does not read as "I cannot enter combat", it reads as **"the sword is
+  never used"** — and because Shift is the *strike*, it also reads as "Shift does nothing".
+- **A Prince who cannot draw cannot defend.** `Fighter.stab` has a branch for him: a Kid who is
+  hit while `!swordDrawn` does not take a wound, he **dies outright**. Unopposed, the first guard
+  therefore kills him every single time — which is exactly the report.
+- The arms behind the stance are all frame-gated (`157-158, 165, 170-171, 7-8, 20-21, 15` for a
+  strike; `158, 170, 8, 20-21` for a step), and the windows are **not** shared with the guard:
+  `Kid.block` parries on 158, 165 or 167 where `Fighter.block` parries on 8, 20, 21, 18, 15 or 17.
+  Tidying the two into one set of numbers would break both halves.
+
+Three things follow from the same section of `Kid.js` and had to come with it:
+
+**`Kid.turn` is an override, not `Fighter.turn`.** An armed Prince who turns toward an opponent he
+can reach plays `turndraw` — the turn *is* the draw — and it is tested with
+`canReachOpponent(turn: true)`, which probes the tiles as they will be *after* the turn. That is the
+only way an opponent behind him is reachable at all.
+
+**`Kid.fastsheathe` reaches into the opponent.** It is the one verb in either half that writes to
+the other actor: the guard's `refracTimer` is pushed out nine ticks, so a Prince who puts his sword
+away is not immediately attacked again. It is why `Behaviour.update` takes the opponent `inout`.
+`flee` is what the Prince buys — while it is set, the entry needs the action key, so he has to ask
+for the next fight.
+
+**`Kid.block` may run the sequence from inside itself** (`if (this.opponent.frameID(3))
+this.processCommand()`) — the parry connects on the tick the stab lands. The interpreter belongs to
+`Behaviour`, so the verb *asks* for it and the caller runs it, exactly as `Behaviour.step` does
+for `setBump`.
+
+### 7.9.21 The Prince's opponent is state, because of the kill
+
+`Game.checkForOpponent` is a four-pass search — same room on his row, a neighbouring room on his
+row, the room whatever row, a neighbour whatever row — and it **only assigns when it finds
+someone**. The reference can afford that because `kid.opponent` is a live object reference that
+simply stays put; the port had a per-tick lookup instead, "the nearest living guard in his room",
+which is not the same thing in the one case that matters:
+
+**A query that only returns the living cannot see a kill.** The tick a guard dies, the lookup stops
+returning him, so `Fighter.checkFight` stops being called for the Prince — and the branch that
+notices a dead opponent is the branch that **sheathes his sword and drops the reference**. Without
+it the Prince stands in his fighting stance for ever: sword out, and every verb that could put it
+away or move him belongs to an action he is no longer in. The symptom is a soft-lock in the room
+where he won.
+
+So the opponent is `Simulation.princeOpponent`, sticky, refreshed by the same four passes at the
+top of each tick, and released only when `checkFight` reports that it sheathed him. `flee` is
+cleared at the same moment a *new* opponent is found, which is `Game.js`'s `kid.flee = false`:
+a Prince who fled one guard still fights the next.
+
+### 7.9.22 The Prince's sword is a level question
+
+`Kid`'s constructor is `this.hasSword = PrinceJS.currentLevel > 1`, and `Game.js` only overwrites
+it when the level actually carries a boolean:
+
+```js
+if (typeof json.prince.sword === "boolean") { this.kid.hasSword = json.prince.sword; }
+```
+
+**No shipped level carries one**, so the level number is the answer everywhere: on level 1 he starts
+empty-handed and `gotSword` is what arms him. The port read the absent key as `true`. Nothing
+noticed while he could not draw a sword at all; the moment the stance was wired it would have had
+him fight the first guard with a sword he had never picked up.
+
 ### 7.15 Which way the artwork faces
 
 ```js
@@ -2291,6 +2366,15 @@ Where to look when you have a question. Keep this table current.
 | Render | `RoomRenderer.strips` places the left neighbour at `-roomWidth`, not at `-blockWidth` | The offset is where the room's *origin* goes, so that its column 9 lands on this room's `x = -32` |
 | Render | The neighbour strips are emitted below, left, self, above | `LevelBuilder` walks the map's bottom row first and left to right within a row, and a later sprite draws over an earlier one at the same z where the overhangs collide |
 | Render | `LevelScene.roomTopY` is the screen height, not the room height | The room's cell grid is 189 px but its cels make it 205 px tall. Anchoring the grid above the status bar drops every room by 11 px: a black band at the top and the floor buried under the bar |
+| Combat | The Prince's half of the duel is `Kid`'s overrides, and all of them had to be wired | `tryEngarde`, `kidBlock`, `kidFastsheathe` and `Kid.turn`'s `turndraw` branch. M6 ported `Fighter`'s verbs and `Enemy`'s mind — the guard's half — and `Behaviour.update` answered the combat actions with a `default: break`. Shift is the strike, so a missing entry reads as "the sword is never used", and `stab` kills an unarmed Kid outright, so it also reads as "the guard kills me every time" |
+| Combat | The stance is taken up without being asked, before any movement key | `Kid.updateBehaviour`'s `stand` case calls `tryEngarde` first, and its only tests are `hasSword`, `canReachOpponent` and `facingOpponent` — no input at all. Shift is the strike, not the entry; treating it as the entry is what makes the mechanic feel missing |
+| Combat | `Kid.block` is a verb of its own, not `Fighter.block` | They disagree on every frame number — the Prince parries on 158, 165 and 167, the guard on 8, 20, 21, 18, 15 and 17 — and `Kid.block` makes a different test of the opponent. Sharing one implementation would break both halves |
+| Combat | `Kid.block` *asks* for `processCommand`; the caller runs it | The reference runs the sequence from inside the parry when the stab is on its contact frame. The interpreter belongs to `Behaviour`, which is the same division `Behaviour.step` already uses for `setBump` |
+| Combat | `fastsheathe` is the one verb that writes to the opponent, so the opponent is `inout` | `Kid.fastsheathe` calls `opponent.fastsheathe()` and pushes the guard's `refracTimer` out nine ticks. The reference gets that from a live object reference; a value type has to say so in the signature |
+| Combat | The Prince's opponent is sticky state on `Simulation`, not a per-tick lookup | `Game.checkForOpponent` only assigns when it finds a **living** guard, and the reference keeps a dead one long enough for `Fighter.checkFight` to notice the kill and sheathe the sword. A living-only lookup drops him on that exact tick and leaves the Prince locked in his stance for ever |
+| Combat | `Combat.checkFight` reports whether the fight is over | That is the reference's `this.opponent = null`, in the branch that sheathes. The caller owns the reference, so the caller is told |
+| Combat | `Kid.turn`'s `turndraw` branch asks `canReachOpponent(turn: true)` | The probe is "what will be in front of me after I turn", which is the only way an opponent behind the Prince is reachable at all. The port had the plain `turn` with a note that the branch was M6 |
+| Model | `prince.sword` defaults to the **level number**, not to `true` | `Kid`'s constructor is `hasSword = currentLevel > 1` and `Game.js` overwrites it only when the level carries a boolean, which none does. Invisible while he could not draw; the moment he could, level 1 would have fought the first guard with a sword he had never picked up |
 | Collision | A gate's collision rectangle shrinks as it rises | `Gate` is the only tile class in the reference that overrides `Base.getBounds`, and that override is the only thing that lets a Prince walk through an open gate: `checkBarrier` treats every gate as a barrier and leaves the open/closed test to `canCross`. A flat 4 x 63 strip made an open gate as solid as a shut one |
 | Collision | The gate's position reaches the rectangles as an optional `gatePosition`, not by making `Tile` stateful | A `Tile` is a kind and a modifier and nothing else; live state belongs to `LevelState`. `nil` reads as "not a gate", which every other tile is |
 | M7c | Spikes, potions and swords are trobs, driven by actors rather than by buttons | The reference raises a field from inside the actor’s own check; a button-driven model would miss the case where two actors disturb the same field |

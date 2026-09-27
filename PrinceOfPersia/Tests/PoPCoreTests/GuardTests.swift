@@ -112,6 +112,11 @@ private func levelOne() throws -> LevelRuntime { try LevelRuntime(try GameData.l
     simulation.world.actors[0].room = 21
     simulation.world.actors[0].charBlockY = 0
 
+    // The opponent is settled **by the tick** (`Game.checkForOpponent`), not by the query. It is
+    // sticky state rather than a lookup, because a guard who has just been killed has to stay the
+    // opponent for the one tick it takes `checkFight` to notice and sheathe the Prince's sword.
+    simulation.run(1)
+
     let opponent = simulation.opponentIndex(for: 0)
     #expect(opponent != nil, "a guard shares his room")
 

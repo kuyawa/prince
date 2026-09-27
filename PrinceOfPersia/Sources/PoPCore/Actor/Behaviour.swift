@@ -8,22 +8,23 @@
 /// `action` — which restarts the sequence from index 0 — and the caller then executes it.
 /// Keeping that split means one dispatch per tick, exactly as the reference does it.
 ///
-/// ## What is here, and what is not
+/// ## What is here
 ///
-/// **Implemented:** the locomotion verbs — `turn`, `standjump`, `startrun`, `runturn`,
-/// `turnrun`, `runjump`, `rdiveroll`, `standup`, `crawl`, `runstop`, `stoop`, `step`,
-/// along with `nearBarrier` and `canCrossGate`.
+/// All of it: the locomotion verbs (`turn`, `standjump`, `startrun`, `runturn`, `turnrun`,
+/// `runjump`, `rdiveroll`, `standup`, `crawl`, `runstop`, `stoop`, `step`, `jump`), the
+/// ledge and hang verbs, the pickups, and the combat arms, along with `nearBarrier` and
+/// `canCrossGate`.
 ///
-/// **Not yet implemented, and why:**
+/// ## The combat entry is not a verb
 ///
-/// - `jump()` is not a verb. It is a decision tree over five tile probes that routes into
-///   the ledge system — `checkClimbable`, `jumphanglong`, `jumpbackhang`, `jumpup`,
-///   `highjump`, `climbstairs`. It cannot be done before the hanging states are.
-/// - `checkBarrier` reads Phaser sprite bounds, and `Tile.Base#getBounds` computes
-///   `x = roomX * 32 + 40` — mixing screen pixels with engine units. Untangling that
-///   faithfully is its own job.
-/// - `checkButton`, `checkSpikes`, `checkChoppers` need the interactive-tile (trob) layer.
-/// - `advance`, `retreat`, `block`, `strike`, `fastsheathe`, `tryEngarde` are combat (M6).
+/// `stand` asks `Combat.tryEngarde` *before* it looks at a movement key, and that call is not
+/// gated on any input: a Prince who has the sword and can reach a guard he is facing draws it on
+/// his own. Shift is the **strike**. The port had the guard's whole half of the duel from M6 and
+/// none of the Prince's, so the first guard killed him unopposed and Shift did nothing — which is
+/// exactly how that bug was reported.
+///
+/// The arms below are thin on purpose: they are `Kid.updateBehaviour`'s dispatch, and the verbs
+/// themselves are `Fighter`'s, in `Combat`.
 public enum Behaviour {
     /// `Kid.updateBehaviour`, without an effects channel.
     ///
@@ -37,11 +38,16 @@ public enum Behaviour {
     /// The interpreter is here because two verbs — `step` against a mirror, and `step` into a
     /// gate — call `setBump`, and `setBump` ends the tick with `processCommand`. That is the
     /// reference’s own shape: a behaviour verb may run the sequence, it just does not *have* to.
+    ///
+    /// The opponent is `inout` because one verb writes to it. In the reference every actor holds a
+    /// live reference to his opponent and `Kid.fastsheathe` reaches through it; a value type has
+    /// to say so in the signature. It is the same shape `Combat.checkFight` already uses.
     public static func update(
         _ state: inout ActorState,
         intents: Intents,
         world: any TileWorld,
         interpreter: SequenceInterpreter,
+        opponent: inout ActorState?,
         effects: inout [ActorEffect]
     ) throws {
         // The reference bails out before the actor has a position.
@@ -65,12 +71,21 @@ public enum Behaviour {
         case "stand":
             state.blockEngarde = false
             state.ledgeSwing = 0
-            // Combat entry (tryEngarde) is M6.
+            // The combat entry, before any movement key. The reference has it as two blocks —
+            // `!flee && canReachOpponent && facingOpponent && hasSword`, then the same gated on the
+            // action key — which is the one condition below: after a `fastsheathe` (`flee`) he has
+            // to ask for the next fight, and otherwise the sword comes out unasked.
+            if let foe = opponent, state.hasSword,
+               Combat.canReachOpponent(state, foe, world: world),
+               Combat.facingOpponent(state, foe),
+               !state.flee || intents.contains(.action) {
+                if Combat.tryEngarde(&state, foe, world: world, effects: &effects) { return }
+            }
             if intents.contains(.left) && state.charFace == 1 {
-                return turn(&state, world: world)
+                return turn(&state, world: world, opponent: opponent, effects: &effects)
             }
             if intents.contains(.right) && state.charFace == -1 {
-                return turn(&state, world: world)
+                return turn(&state, world: world, opponent: opponent, effects: &effects)
             }
             if intents.contains(.left), intents.contains(.up), state.charFace == -1 {
                 return standjump(&state)
@@ -203,8 +218,55 @@ public enum Behaviour {
                 )
             }
 
+        // MARK: The combat arms
+
+        // `Fighter.advance` and `Fighter.retreat` are frame-gated, so pressing a direction on the
+        // wrong frame does nothing at all. That is the whole feel of the duel: deliberate, not
+        // mashable.
+        case "engarde":
+            state.charRepeat = false
+            if intents.contains(.left), state.charFace == -1, state.allowAdvance {
+                return Combat.advance(&state)
+            }
+            if intents.contains(.right), state.charFace == 1, state.allowAdvance {
+                return Combat.advance(&state)
+            }
+            if intents.contains(.left), state.charFace == 1, state.allowRetreat {
+                return Combat.retreat(&state)
+            }
+            if intents.contains(.right), state.charFace == -1, state.allowRetreat {
+                return Combat.retreat(&state)
+            }
+            if intents.contains(.up), state.allowBlock, let foe = opponent {
+                // `Kid.block`, not `Fighter.block`: different frames, and a different test of the
+                // opponent. It may ask for the sequence to be run from inside the verb.
+                if Combat.kidBlock(&state, foe) {
+                    try interpreter.step(&state, world: world, effects: &effects)
+                }
+                return
+            }
+            if intents.contains(.action), state.allowStrike, let foe = opponent {
+                return Combat.strike(&state, foe, effects: &effects)
+            }
+            if intents.contains(.down) {
+                return Combat.kidFastsheathe(&state, opponent: &opponent)
+            }
+
+        case "advance", "blockedstrike":
+            state.charRepeat = false
+            if intents.contains(.up), state.allowBlock, let foe = opponent {
+                if Combat.kidBlock(&state, foe) {
+                    try interpreter.step(&state, world: world, effects: &effects)
+                }
+            }
+
+        case "retreat", "strike", "block":
+            state.charRepeat = false
+            if intents.contains(.action), state.allowStrike, let foe = opponent {
+                return Combat.strike(&state, foe, effects: &effects)
+            }
+
         default:
-            // The combat arms have their own file; see `Combat`.
             break
         }
     }
@@ -369,9 +431,39 @@ public enum Behaviour {
 
     // MARK: - Verbs
 
-    /// `Kid.turn`. The two `turndraw` branches are combat and belong to M6.
-    public static func turn(_ state: inout ActorState, world: any TileWorld) {
-        state.beginAction("turn")
+    /// `Kid.turn` — and its combat branch, which is not a plain turn.
+    ///
+    /// A Prince who has the sword and turns toward an opponent he can reach plays **`turndraw`**:
+    /// the turn *is* the draw, one animation, and it ends in the stance. `canReachOpponent` is
+    /// asked with `turn: true`, which probes the tiles as they will be *after* the turn — that is
+    /// what makes an opponent behind him reachable at all, and it is why the port could not have
+    /// this branch before it had an opponent to ask about.
+    ///
+    /// The reference's second call is the same test repeated, so the three branches reduce to:
+    /// no sword or nobody to reach → `turn`; an opponent behind him and room to move → `turndraw`;
+    /// anything else → `turn`.
+    public static func turn(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        opponent: ActorState?,
+        effects: inout [ActorEffect]
+    ) {
+        guard let opponent, state.hasSword,
+              Combat.canReachOpponent(state, opponent, world: world, turn: true)
+        else {
+            state.beginAction("turn")
+            return
+        }
+
+        guard !Combat.facingOpponent(state, opponent), !nearBarrier(state, world: world) else {
+            state.beginAction("turn")
+            return
+        }
+
+        state.beginAction("turndraw")
+        state.flee = false
+        if !state.swordDrawn { effects.append(.sound(.unsheatheSword)) }
+        state.swordDrawn = true
     }
 
     public static func standjump(_ state: inout ActorState) {

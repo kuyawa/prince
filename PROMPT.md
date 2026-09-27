@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **The renderer reads the world's tiles** — one override it never saw, four symptoms. 387 tests pass |
+| **Last completed** | **The Prince's half of the duel** — the sword was never wired to Shift. 403 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -697,6 +697,57 @@ reverted, each naming the frame that should have gone: `dungeon_11`, `dungeon_10
 - The existing test `aShakingBoardDrawsItsShakeFrame` still passes unchanged; its sibling
   `aFallenBoardDrawsTheFallingGraphic` now checks that `dungeon_11` is *absent*, which is the
   whole point.
+
+---
+
+### The Prince can use the sword ✅ *complete*
+
+Reported as: *once I pick up the sword and get to the first guard the prince doesn't fight with the
+guard, the sword is never used, pressing shift does nothing and the guard kills the prince every
+time.*
+
+- [x] **The combat entry exists.** `Kid.updateBehaviour` calls `tryEngarde` from the `stand`
+      case **before it looks at any movement key**, and its only tests are "has the sword", "can
+      reach an opponent" and "is facing him". The sword comes out on its own; Shift is the
+      *strike*. The port had a comment where that call should have been.
+- [x] **The six combat arms dispatch.** `engarde`, `advance`, `blockedstrike`, `retreat`,
+      `strike` and `block` now reach `Combat`'s verbs instead of falling through a
+      `default: break`. Every one of them is frame-gated — that is the whole feel of the duel.
+- [x] **`Kid.block` is a verb of its own.** The Prince parries on 158, 165 and 167; the guard on
+      8, 20, 21, 18, 15 and 17. The port had only the guard's, because only the guard's half was
+      wired.
+- [x] **`Kid.fastsheathe`** — down in the stance puts the sword away, sets `flee` (so the next
+      fight has to be asked for) and pushes the guard's `refracTimer` out nine ticks.
+- [x] **`Kid.turn`'s `turndraw` branch** — an armed Prince turning toward someone he can reach
+      turns *and* draws, in one animation.
+- [x] **The opponent is sticky state on `Simulation`.** `Game.checkForOpponent` only ever assigns
+      when it finds a **living** guard, so the reference keeps a dead one long enough for
+      `checkFight` to notice the kill and sheathe the sword. A living-only lookup drops him on that
+      exact tick, and the Prince is then locked in his stance for ever with his sword out.
+- [x] **`prince.sword` defaults to the level number**, not to `true`: `Kid`'s constructor is
+      `currentLevel > 1`, and `Game.js` only overwrites it when the level carries a boolean,
+      which no shipped level does. Level 1 starts empty-handed, as it should.
+
+**Sixteen tests, and every one of them was proved by reverting** — the entry, the parry window, the
+flight, `turndraw`, the level-1 sword and the end-to-end duel all fail when their line goes.
+
+**The trace that found it, and the one that proves it.**
+`swift run Prince --trace --level 2 --room 15 --location 13 --hold action` — before the fix the
+Prince stands while the guard closes, and dies without ever leaving `stand`. After it he takes the
+stance on tick 10 with no input at all, and the strike key takes `guard-1` from 3 health to 2 on
+the frames the animation allows: the real `LevelScene`, the real host, the real input layer.
+
+**Notes:**
+- **"Shift does nothing" was two facts stacked.** Shift is `.action`, and `.action` in `stand`
+  is `tryPickup` — potions and swords on the floor. With no entry to the stance the key had nowhere
+  to go, and that is all the player could see.
+- **Why the existing tests missed it:** `CombatTests` builds a Prince who is *already* in
+  `engarde` and drives `Combat.checkFight` directly. Every verb was tested; the wiring from a key
+  to a verb was not.
+- **One gap left, deliberately:** `Fighter.checkFight`'s `blocked` and `blockedstrike` branches
+  call `this.processCommand()` in the reference and the port does not, so a parry's animation
+  starts one tick late. Pre-existing, in the guard's path, and left alone — moving it needs its own
+  trace.
 
 ---
 

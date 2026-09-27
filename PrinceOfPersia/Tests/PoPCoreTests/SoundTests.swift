@@ -146,7 +146,7 @@ private func names(_ heard: [SoundEffect]) -> Comment {
     // Fighter.updateFallingBlocks plays FallingFloorLands when fallingBlocks === 5, and only
     // for the kid. It is a cry, not a landing: it happens in mid-air, five floors down. The
     // count is what the interpreter watches for.
-    var state = ActorState.prince(from: try GameData.level(1).prince)
+    var state = ActorState.prince(from: try GameData.level(1).prince, levelNumber: 1)
     state.isInFallDown = true
     state.charBlockY = 2
 
