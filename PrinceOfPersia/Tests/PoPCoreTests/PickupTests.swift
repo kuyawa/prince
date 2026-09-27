@@ -107,6 +107,51 @@ private func princeOnTile(_ x: Int, _ y: Int, room: Int) throws -> Simulation {
     #expect(world.tile(x: 3, y: 2, room: 17).modifier == 0)
 }
 
+// MARK: - And what is drawn afterwards
+
+@Test func aDrankPotionIsNoLongerDrawn() throws {
+    // The simulation half of this is `takingAPotionLeavesPlainFloor`; this is the other half, and
+    // it was the half that was missing. `removeObject` replaces the tile with floor as an
+    // *override*, and the renderer used to read the immutable level — so a drunk bottle stayed on
+    // the floor for ever while the Prince drank from a copy of it.
+    var world = World(try levelOne())
+    let cell = { (s: [SpriteInstance]) in
+        s.filter { $0.x == 3 * Geometry.blockWidth && $0.y == 2 * Geometry.blockHeight - 13 }
+            .map(\.frameName)
+    }
+
+    let before = cell(RoomRenderer.describe(world: world, room: 17).sprites)
+    #expect(before.contains { $0.hasPrefix("dungeon_10") }, "the bottle is drawn: \(before)")
+
+    world.removeObject(at: TileRef(room: 17, x: 3, y: 2))
+    let after = cell(RoomRenderer.describe(world: world, room: 17).sprites)
+    #expect(!after.contains { $0.hasPrefix("dungeon_10") }, "it is gone: \(after)")
+    #expect(after.contains("dungeon_1"), "plain floor is left: \(after)")
+}
+
+@Test func aTakenSwordIsNoLongerDrawn() throws {
+    // Same override, same bug: "the sword of the first guard is sometimes shown, sometimes not".
+    var simulation = try princeOnTile(2, 2, room: 15)
+    let cell = { (s: [SpriteInstance]) in
+        s.filter { $0.x == 2 * Geometry.blockWidth && $0.y == 2 * Geometry.blockHeight - 13 }
+            .map(\.frameName)
+    }
+
+    let before = cell(
+        RoomRenderer.describe(world: simulation.world, room: 15).sprites
+    )
+    #expect(before.contains { $0.hasPrefix("dungeon_22") }, "the sword is drawn: \(before)")
+
+    for _ in 0..<8 { simulation.tick(intents: [.action]) }
+    #expect(simulation.world.tile(x: 2, y: 2, room: 15).kind == .floor)
+
+    let after = cell(
+        RoomRenderer.describe(world: simulation.world, room: 15).sprites
+    )
+    #expect(!after.contains { $0.hasPrefix("dungeon_22") }, "it is gone: \(after)")
+    #expect(after.contains("dungeon_1"), "plain floor is left: \(after)")
+}
+
 // MARK: - Picking up
 
 @Test func thePrinceTakesTheSwordInLevelOne() throws {

@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **A fallen board leaves a hole you can see** — the renderer was reading the level, not the world. 385 tests pass |
+| **Last completed** | **The renderer reads the world's tiles** — one override it never saw, four symptoms. 387 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -669,7 +669,7 @@ after    t166 room 1 (7,2) x112 y179 climbdown
 
 ---
 
-### A fallen board leaves a hole you can see ✅ *complete*
+### The renderer reads the world's tiles ✅ *complete*
 
 Reported as: *when floor boards fall, the floor is not drawn with a hole — the boards are still in
 place even though the Prince can go down through them. If the boards fall, remove them.*
@@ -679,6 +679,14 @@ place even though the Prince can go down through them. If the boards fall, remov
       it and the drawing did not, so the Prince fell through a board that was still drawn.
 - [x] **A falling board is drawn at `LooseBoard.fallOffset`**, dropping clear of the cell it left,
       rather than vanishing the instant the hole appears.
+- [x] **Two more reports closed by the same line**, confirmed by playing: *the sword of the first
+      guard is sometimes shown, sometimes not*, and *a drunk bottle stays on the floor while the
+      Prince drinks from it*. A taken potion and a taken sword are `removeObject`, which is another
+      override — so both were the same defect wearing different hats.
+
+**Three tests, one line of code.** `aBoardThatHasGivenWayLeavesAHoleInTheDrawing`,
+`aDrankPotionIsNoLongerDrawn` and `aTakenSwordIsNoLongerDrawn` all fail when the world lookup is
+reverted, each naming the frame that should have gone: `dungeon_11`, `dungeon_10`, `dungeon_22`.
 
 **Notes:**
 - **One change covered every override.** The hole a board leaves, the debris it lands as, a taken
