@@ -1535,6 +1535,49 @@ functions now take an optional `gatePosition`, and `Barrier.checkBarrier` suppli
 `world.trob(x:y:room:)?.gate?.position` at the two places it measures a gate. `nil` means "not a
 gate", which is every other tile in the level.
 
+### 7.9.18a `CMD_DOWN` goes down a room, not down a floor
+
+`Kid` has two opcodes for moving between rooms vertically, and they are not symmetrical:
+
+```js
+PrinceJS.Kid.prototype.CMD_UP = function (data) {
+  if (this.charBlockY === 0) {
+    this.charY += 189; this.baseY -= 189; this.charBlockY = 2;
+    this.room = this.level.rooms[this.room].links.up;
+  }
+};
+
+PrinceJS.Kid.prototype.CMD_DOWN = function (data) {
+  if (this.charBlockY === 2 && this.charY > 189) {
+    this.charY -= 189; this.baseY += 189; this.charBlockY = 0;
+    this.changeRoomDown();          // ← the room moves *here*
+  }
+};
+```
+
+**`CMD_UP` names the room directly; `CMD_DOWN` calls `changeRoomDown`,** which is also where the
+two corner cases live — a room with nothing directly below sends an actor at the right-hand column
+into the room below the one to its right, and one at the left column into the room below the one to
+its left.
+
+The port reproduced the arithmetic and dropped the call, emitting an `exitedRoomDown` effect in its
+place. So the Prince arrived at row 0 of the room he was already in: `charY` 179 → 242 → 53, `by`
+2 → 0, and `room` unchanged. The screen never changed, and a ledge caught there let go onto the
+floor he had started from.
+
+The trace that found it, and the fix, are the same six ticks apart:
+
+```
+before   t166 room 1 (7,2) x112 y179 climbdown
+         t172 room 1 (7,0) x107 y 53 climbdown      ← 179 + 63 - 189
+after    t166 room 1 (7,2) x112 y179 climbdown
+         t172 room 2 (7,0) x107 y 53 climbdown
+```
+
+`--watch` was added for this: room, block, position and action every tick. The report was
+"he falls into the same room", and no screenshot can distinguish a simulation that never moved
+the room from a host that never drew the new one.
+
 ### 7.9.18 Dropping out of the bottom of a room, and the frames that are not allowed to
 
 The whole of the vertical room change is `Kid.checkRoomChange` — `Fighter`'s version differs only
@@ -2183,6 +2226,8 @@ Where to look when you have a question. Keep this table current.
 | M9 | `--scale` is an override for one launch and is not saved | It is a diagnostic in the same family as `--level`; rewriting the player's menu choice because a screenshot passed a flag would be a surprise |
 | M9 | `WindowScale.requestedScale` returns `Int?`, not a defaulted `Int` | "Asked for the default" and "asked for nothing" are different questions, and erasing the difference is what made the setting unrememberable. Precedence and clamping live once, in `WindowSettings.startingScale` |
 | M9 | Window preferences live in `window.json`, not in `progress.json` | One is a save that `--new-game` throws away; the other must outlive it. Two files, two failure modes, neither able to break the other |
+| Physics | `CMD_DOWN` calls `changeRoomDown`, as `Kid.CMD_DOWN` does | The opcode shifts `charY` by the room height and resets `charBlockY`; the reference leaves the *room* to `changeRoomDown`, and the port had dropped the call. The Prince climbed down into row 0 of the room he was already in |
+| Host | `--watch` prints the simulation's state once a tick | A report of "he fell into the wrong room" cannot be answered from a screenshot: whether the simulation moved the room and the screen did not, or the simulation never moved it, is the whole question |
 | Physics | `Kid.checkRoomChange` reproduces the reference's twenty-frame early return | It is the first statement in the function, so it skips the `charY` test too. The port had left it out on the stated grounds that it could not affect that test, which is the one thing it does affect |
 | M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |
 | M6d | `Splash.show` is called before the action changes | `showSplash` refuses the four self-bloodying death animations, so the order decides whether a killing blow bleeds |

@@ -72,3 +72,56 @@ private func levelOne() throws -> LevelRuntime { try LevelRuntime(try GameData.l
     #expect(rooms.contains(11), "he left room 8 downwards, not sideways: \(rooms)")
     #expect(rooms.first == 8)
 }
+
+@Test func climbingDownThroughAHoleEndsInTheRoomBelow() throws {
+    // The reported bug, tick for tick. In level 1's first room the loose board at (6,2) leaves a
+    // hole; stand on the floor beside it at (7,2) facing it and climb down, and the Prince arrives
+    // at row 0 of the room he was already in — `by` 2 to 0 and `charY` 179 to 53, with `room`
+    // unchanged. The screen never changes, so letting go of the ledge he catches there drops him
+    // back onto the floor he started from.
+    //
+    // `charY` 179 to 53 is the tell: 179 + 63 is 242, and 242 - 189 is 53. The room height came
+    // off, so *something* ran — `Kid.CMD_DOWN`, which the port had been finishing without
+    // calling `changeRoomDown`.
+    var data = try GameData.level(1)
+    let original = data.prince
+    data = data.replacingPrince(PrinceSpawn(
+        location: 27, room: 1, direction: 1,
+        offset: original.offset, turn: original.turn,
+        cameraRoom: original.cameraRoom, bias: original.bias,
+        reverse: original.reverse, sword: original.sword,
+        danger: false, specialEvents: original.specialEvents
+    ))
+    var simulation = try Simulation(level: LevelRuntime(data), seed: 1)
+
+    // Knock the board out, and put him on the floor beside the hole facing it.
+    simulation.world.shakeLooseBoard(at: TileRef(room: 1, x: 6, y: 2))
+    for _ in 0..<12 { simulation.tick(intents: .none) }
+    #expect(simulation.world.tile(x: 6, y: 2, room: 1).kind == .space, "the hole is there")
+
+    var prince = simulation.world.actors[0]
+    prince.room = 1
+    prince.charFace = 1
+    prince.charBlockX = 7
+    prince.charBlockY = 2
+    prince.charX = 112
+    prince.charY = CoordinateSpace.y(fromBlockY: 2)
+    prince.baseY = 0
+    prince.charXVel = 0
+    prince.charYVel = 0
+    prince.isInFallDown = false
+    prince.beginAction("climbdown")
+    simulation.world.actors[0] = prince
+
+    var reachedRoomTwo: Int? = nil
+    for tick in 1...12 {
+        simulation.tick(intents: .none)
+        let him = simulation.world.prince
+        // The reference's positions for this manoeuvre: x 107, row 0, charY 53.
+        if him.charBlockY == 0, him.charY == 53 { reachedRoomTwo = him.room }
+        if tick == 12 { reachedRoomTwo = him.room }
+    }
+
+    #expect(reachedRoomTwo == 2, "the climb went through the hole into room 2, not round it")
+    #expect(simulation.world.prince.room == 2)
+}

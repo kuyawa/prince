@@ -228,10 +228,16 @@ public struct SequenceInterpreter: Sendable {
             }
 
         case .down:
+            // `Kid.CMD_DOWN`: the climb finishes one room *down*, and `changeRoomDown` is what
+            // moves him there — including the two corner cases for a room with nothing directly
+            // beneath it. Without the call the Prince arrives at row 0 of the room he was
+            // already in: the screen never changes and he lands back where he started.
             guard state.charBlockY == 2, state.charY > Geometry.roomHeight else { break }
             state.charY -= Geometry.roomHeight
             state.baseY += Geometry.roomHeight
             state.charBlockY = 0
+            FallCycle.changeRoomDown(&state, world: world)
+            effects.append(.enteredRoom(state.room))
             effects.append(.exitedRoomDown)
 
         case .jard:

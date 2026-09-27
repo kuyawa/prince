@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **Releasing a ledge runs `hangfall` or `hangdrop`** — the port answered both with `stepfall`. 383 tests pass |
+| **Last completed** | **`CMD_DOWN` goes down a room** — the climb-down opcode moved the Prince's y but never the room. 384 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -630,69 +630,43 @@ Asked for as: *remember the resolution I set last time when restarting the app.*
 
 ---
 
-### Releasing a ledge ⚠️ *fixed, and the report still stands*
+### Climbing down a hole ⚠️ *was not going down a room*
 
-Reported as: *walk to the hole the loose board left in the first room, turn, hold shift and hang
-from the edge; the screen still shows the first floor, and releasing shift drops him back onto it.
-Walking or running off the same hole without shift falls through as it should.*
+Reported as: *stand at the edge of the hole the loose board left in the first room, climb down,
+hold shift and hang from the edge; the screen still shows the first floor, and releasing shift
+drops him back onto it. Walking or running off the same hole without shift falls through.*
 
-- [x] **`Kid.startFall`'s hang branch is reproduced.** Releasing a ledge runs `hangfall` — let go
-      and go through — or `hangdrop` — let go and land — chosen on what is underneath him. The
-      port answered both with a bare `stepfall`, which is the action for *stepping off* a ledge.
-      This was a real gap: `hangfall` and `hangdrop` had been in `kid.json` all along, unused.
-- [ ] **The reported symptom is not reproduced in the simulation, so the item stays open.**
-
-**What the simulator does, driving the reported route** — walk right out of the starting cell,
-fall off the edge at `(4,1)`, run over the loose board at `(6,2)` until it gives way, turn back,
-stand at `(7,2)` facing right, press left + shift:
-
-```
-t 69 stepfall  room 1  bx 6  y 182      stepping off the edge into the hole\
-t 71 stepfall  room 2  bx 6  y   8      room already changed, one tick after the edge\
-```
-
-The room changes on the way down, before the grab, and the hang then happens **in room 2**, from
-room 1's hole lip — `hang` at room 2 `(5,0)`, whose tile above chains to room 1's `(5,2)`. Releasing
-runs `hangfall` and he lands on room 2's floor. Every position in the room was swept; there is no
-hang anywhere in room 1 that releases back into room 1 except `(3,0)`, where the tile underneath is
-a pillar and `hangdrop` is correct.
-
-**So the next step is data, not reasoning.** `--watch` prints one line per tick — room, block,
-position, action — which is exactly what decides this. Run:
-
-```bash
-"build/Prince of Persia.app/Contents/MacOS/Prince of Persia" --watch --new-game
-```
-
-reproduce, and the lines around the hang say whether the sim's `room` has changed while the screen
-has not (a host bug) or whether the hang really does resolve inside room 1 (a sim bug in a
-configuration the sweep does not reach).
-
-- [x] **`Kid.startFall`'s hang branch is reproduced.** Releasing a ledge runs `hangfall` — let go
-      and go through — or `hangdrop` — let go and land — chosen on what is underneath him. The
-      port answered both with a bare `stepfall`, which is the action for *stepping off* a ledge.
+- [x] **`CMD_DOWN` calls `changeRoomDown`.** This is the bug the report was about.
+- [x] **Releasing a ledge runs `hangfall` or `hangdrop`.** `Kid.startFall` has a whole branch for
+      the hanging actions and the port answered both with a bare `stepfall`. A real gap —
+      `hangfall` and `hangdrop` had been in `kid.json` all along, unused.
 - [x] **`Kid.checkRoomChange` reproduces the reference's twenty-frame early return**, found on the
-      way through. The port had skipped it on the stated grounds that the guard could not affect
-      the `charY` test below; the guard is the function's first statement, so it is the one thing
-      that test is subject to.
+      way through.
+- [x] **`--watch`**, added because the report could not be answered without the simulation's own
+      account of which room it thought the Prince was in.
+
+**The trace, before and after** — the same six ticks, from the player's own run:
+
+```
+before   t166 room 1 (7,2) x112 y179 climbdown
+         t172 room 1 (7,0) x107 y 53 climbdown      <- 179 + 63, then - 189
+after    t166 room 1 (7,2) x112 y179 climbdown
+         t172 room 2 (7,0) x107 y 53 climbdown
+```
 
 **Notes:**
-- **The turn is what tipped it over.** `startFall` arms `checkFloorStepFall` — an immediate floor
-  probe — for `turn`, `turnrun`, `turnengarde`, `highjump` and `hangdrop`, and `checkFall`
-  consumes it. Turning on the way to the edge leaves that probe armed. `hangfall` never probes,
-  so it is immune; a `stepfall` spends it on the first tick and lands him where he is.
-- **The same mistake did the opposite thing elsewhere.** `stepfall` also ignores what is
-  underneath him, so hanging *beside* a hole rather than over it, the old code dropped him
-  through solid floor into the room below.
-- **Walking off is a different path.** It goes through `checkFloorStanding` rather than
-  `startFall`, which is why only the ledge was wrong and it looked like a hang bug.
-- **`hangfall` and `hangdrop` had been in `kid.json` all along**, unused.
-- **Reproduced by forcing the hang state**, not by playing: the sim will not let him catch that
-  particular edge without the turn that arms the probe, which is itself the clue.
+- **`charY` 179 -> 53 was the tell.** 179 + 63 is 242, and 242 - 189 is 53: the room height came
+  off, so something ran. It was `Kid.CMD_DOWN`, which subtracts the room height, resets
+  `charBlockY` to 0 and then leaves the *room* to `changeRoomDown` — and the port emitted an effect
+  in place of the call. Hence row 0 of the room he was already in.
+- **`CMD_UP` and `CMD_DOWN` are not symmetrical.** `CMD_UP` names `links.up` directly; only
+  `CMD_DOWN` goes through `changeRoomDown`, which is also where the two corner cases live.
+- **Two earlier guesses were wrong**, and both were recorded rather than quietly dropped: a
+  floor-probe armed by `turn` (a real bug, fixed, but not this one) and the ledge-release action
+  (also real, also fixed, also not this one).
+- **What broke the tie was data, not reading.** `--watch` prints room, block, position and action
+  every tick, and the report turned on exactly those four things.
 
----
-
-## Verification commands
 ---
 
 ## Verification commands

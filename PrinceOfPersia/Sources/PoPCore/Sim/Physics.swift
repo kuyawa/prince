@@ -211,8 +211,8 @@ public enum FallCycle {
     /// Includes the corner cases: with no room directly below, an actor at the right-hand edge
     /// drops into the room below the one to its right, and one at the left edge into the room
     /// below the one to its left. Both shift `charX` by a whole room so it stays room-local.
-    static func changeRoomDown(_ state: inout ActorState, world: any TileWorld) {
-        guard let links = world.roomLinks(state.room) else { return }
+    static func changeRoomDown(_ state: inout ActorState, world: (any ActorWorldQuery)?) {
+        guard let world, let links = world.roomLinks(state.room) else { return }
 
         if links.down > 0 {
             state.room = links.down
