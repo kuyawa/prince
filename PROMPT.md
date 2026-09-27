@@ -731,6 +731,10 @@ time.*
 **Sixteen tests, and every one of them was proved by reverting** — the entry, the parry window, the
 flight, `turndraw`, the level-1 sword and the end-to-end duel all fail when their line goes.
 
+**Confirmed in play**, and in the owner's words: *it works perfectly, I am enjoying it a lot.* The
+fight is the one thing a test could only ever approximate — the timing of a tap on Shift against an
+animation, and whether the stance feels like it was always there.
+
 **The trace that found it, and the one that proves it.**
 `swift run Prince --trace --level 2 --room 15 --location 13 --hold action` — before the fix the
 Prince stands while the guard closes, and dies without ever leaving `stand`. After it he takes the
