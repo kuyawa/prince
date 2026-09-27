@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **The window size is remembered** — the View menu writes `window.json`, `--scale` stays an override. 377 tests pass |
+| **Last completed** | **The twenty-frame guard in `Kid.checkRoomChange`** — the vertical room change was applying on frames the reference skips. 381 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -627,6 +627,31 @@ Asked for as: *remember the resolution I set last time when restarting the app.*
 - **Verified by driving the real menu.** `osascript` clicks 5x, the file becomes `{"scale": 5}`,
   the app is killed and relaunched with no flags, and the window comes back 1600 wide. Ten unit
   tests cover the reading: round trip, missing file, corrupt file, out-of-range, and precedence.
+
+---
+
+### The vertical room change ⚠️ *partly done*
+
+Reported as: *when hanging from a hole in the floor in the first level it doesn't draw the room
+below, it draws the same room and falls to the same room, it should land on the room below.*
+
+- [x] **`Kid.checkRoomChange` reproduces the reference's twenty-frame early return.** The port had
+      skipped it on the stated grounds that the guard could not affect the `charY` test below; the
+      guard is the function's first statement, so it is the one thing the test is subject to.
+- [ ] **The reported symptom is NOT reproduced, and this stays open.**
+
+**Notes:**
+- **Every floor hole in level 1 crosses correctly.** Swept with a scripted walk-off-and-drop:
+  room 8's (4,2) hole → room 11, room 12's (5,2) → 19, room 22's (1,2) → 15, room 20's (5,2) → 4,
+  room 15's (6,2) → 10. In each case `room` changes at `charY > 189`, exactly as the reference
+  does, and the actor lands in the room below.
+- **Hanging behaves the same way.** Falling into room 8's hole with the action key held hangs him
+  at `(4,2)`, `charY` 179; releasing drops him and he crosses to room 11 on the way down.
+- **What is still unexplained is the drawing.** While hanging through a floor hole his
+  `charBlockY` is the *upper* room's bottom row and `charY` is 179, so the upper room is drawn —
+  and the original does the same: `leave_room` in SDLPoP switches rooms at `Char.y >= 211`, not at
+  the floor line. So the hang staying in the upper room is correct, and the report is about
+  something else. **Need the room the player was in.**
 
 ---
 

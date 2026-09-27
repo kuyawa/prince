@@ -170,6 +170,25 @@ public enum FallCycle {
         }
     }
 
+    /// The frames on which `Kid.checkRoomChange` does nothing at all.
+    ///
+    /// ```js
+    /// // Ignore frames around alternating chx (+/-)
+    /// if ([16, 17, 27, 28, 47, 48, 49, 50, 51, 61, 62, 76, 77,
+    ///      116, 117, 125, 126, 127, 128, 157].includes(this.charFrame)) { return; }
+    /// ```
+    ///
+    /// The comment says what it is for: these are frames that **flip the sprite's x offset**
+    /// (`chx`), and crossing a room on one of them would apply the flip on the wrong side of a
+    /// room boundary. The port skipped this guard for a while on the stated grounds that "the
+    /// `charY` branch below is unaffected" — but the guard is the first statement in the
+    /// function, so its `return` skips *everything*, the `charY` test included. It is a plain
+    /// early return and is reproduced as one.
+    static let frozenFrames: Set<Int> = [
+        16, 17, 27, 28, 47, 48, 49, 50, 51, 61, 62, 76, 77,
+        116, 117, 125, 126, 127, 128, 157,
+    ]
+
     /// `Kid.checkRoomChange`.
     ///
     /// **189, not 192** — the Kid's threshold differs from the Fighter's. The rest of the
@@ -177,10 +196,10 @@ public enum FallCycle {
     /// edge; it never changes `room` itself, which happens in `updateBlockPosition`. Those
     /// dispatches are not emitted because the host reads `state.room` each frame.
     ///
-    /// The reference also returns early on twenty specific frames "around alternating chx",
-    /// which exists to avoid a double room change while a frame is mid-flip. The `charY`
-    /// branch below is unaffected by that guard, so it is not reproduced.
+    /// `Fighter.checkRoomChange` — the guards' version — has no frame guard at all, which is why
+    /// only this one has it.
     public static func checkRoomChange(_ state: inout ActorState, world: any TileWorld) {
+        guard !frozenFrames.contains(state.charFrame) else { return }
         guard state.charY > Geometry.roomHeight else { return }
         state.charY -= Geometry.roomHeight
         state.baseY += Geometry.roomHeight

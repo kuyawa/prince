@@ -1535,6 +1535,40 @@ functions now take an optional `gatePosition`, and `Barrier.checkBarrier` suppli
 `world.trob(x:y:room:)?.gate?.position` at the two places it measures a gate. `nil` means "not a
 gate", which is every other tile in the level.
 
+### 7.9.18 Dropping out of the bottom of a room, and the frames that are not allowed to
+
+The whole of the vertical room change is `Kid.checkRoomChange` — `Fighter`'s version differs only
+in its threshold (192 against 189) and has no frame list:
+
+```js
+PrinceJS.Kid.prototype.checkRoomChange = function () {
+  // Ignore frames around alternating chx (+/-)
+  if ([16, 17, 27, 28, 47, 48, 49, 50, 51, 61, 62, 76, 77,
+       116, 117, 125, 126, 127, 128, 157].includes(this.charFrame)) {
+    return;
+  }
+  ... camera dispatches ...
+  if (this.charY > 189) {
+    this.charY -= 189;
+    this.baseY += 189;
+    this.changeRoomDown();
+  }
+};
+```
+
+The port reproduced the `charY` test and skipped the frame list, on the stated grounds that the
+list "exists to avoid a double room change while a frame is mid-flip" and that "the `charY` branch
+below is unaffected by that guard". The first half is right and the second is not: the guard is
+the **first statement** in the function, so its `return` skips everything, the `charY` test
+included. It is now reproduced — an early return before the threshold, `FallCycle.frozenFrames`.
+
+These are the frames whose frame definition carries an alternating `chx`, and crossing a room on
+one of them would apply the flip on the wrong side of a room boundary.
+
+`changeRoomDown` carries the two corner cases with it: with no room directly below, an actor at
+the right-hand column drops into the room below the one to its right, and one at the left column
+into the room below the one to its left.
+
 ### 7.15 Which way the artwork faces
 
 ```js
@@ -2105,7 +2139,7 @@ Where to look when you have a question. Keep this table current.
 | M9 | `--scale` is an override for one launch and is not saved | It is a diagnostic in the same family as `--level`; rewriting the player's menu choice because a screenshot passed a flag would be a surprise |
 | M9 | `WindowScale.requestedScale` returns `Int?`, not a defaulted `Int` | "Asked for the default" and "asked for nothing" are different questions, and erasing the difference is what made the setting unrememberable. Precedence and clamping live once, in `WindowSettings.startingScale` |
 | M9 | Window preferences live in `window.json`, not in `progress.json` | One is a save that `--new-game` throws away; the other must outlive it. Two files, two failure modes, neither able to break the other |
-| M6d | `ActorState.action` is a computed property whose setter rewinds `sequencePointer` | That is what the reference’s `action` setter does. As a stored property it worked everywhere except `startFall`, which skipped a `stepfall`’s `ACT 3` and cascaded into `actionCode`, `checkFloor` and `fallingBlocks` |
+| Physics | `Kid.checkRoomChange` reproduces the reference's twenty-frame early return | It is the first statement in the function, so it skips the `charY` test too. The port had left it out on the stated grounds that it could not affect that test, which is the one thing it does affect |
 | M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |
 | M6d | `Splash.show` is called before the action changes | `showSplash` refuses the four self-bloodying death animations, so the order decides whether a killing blow bleeds |
 | M6d | `die` does not show a splash | Only the `DIE` opcode, `stabbed` and `damageLife` do. Putting it in `die` makes a spike death bleed onto the spikes |
