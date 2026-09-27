@@ -1,9 +1,9 @@
 TODO:
 
 - When hanging from a hole in the floor in the first level it doesn't draw the room below, it draws the same room and falls to the same room, it should land on the room below
-  (not reproduced yet: every floor hole in level 1 crosses to the room below as it should.
-   Fixed a real bug alongside it - Kid.checkRoomChange was crossing on twenty frames the
-   reference skips - but that is not this. Which room was it?)
+  (tried: hang at the hole and hang on the floor beside it, in every room of level 1 with a
+   floor hole - 8 room/column pairs - and every one crosses to the room below on release.
+   Need the room number: which room is the Prince in when he hangs?)
 - When floor tiles fall, the floor is not drawn with a hole, tiles are still in place but the prince can go down through them
 - Sword of first guard sometimes is shown, sometimes is not
 
