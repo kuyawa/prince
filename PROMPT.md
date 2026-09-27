@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **Walking through a gate that is standing open** — a gate's collision rectangle shrinks as it rises. 367 tests pass |
+| **Last completed** | **One keyboard for the process** — a second `KeyboardInput` was swallowing every arrow. 367 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -570,6 +570,39 @@ Reported as: *first level, a gate to the left opens but the prince can not walk 
 - **The reproduction is a walk, not a unit test.** Level 1's room 5 row 0 has a raise button at
   (4,0), a gate at (5,0) and another button beyond it; the regression test drives the real
   `Simulation` and asserts he is past column 5 when the gate reaches -47.
+
+---
+
+### One keyboard for the process ✅ *complete*
+
+Reported as: *on app start sometimes keys don't respond, sometimes they do.*
+
+- [x] **One `KeyboardInput`, created once in `main.swift`.** A local event monitor that returns
+      `nil` ends the monitor chain, and `KeyboardInput` returns `nil` for every key it is bound to
+      so AppKit does not beep. The throwaway scene built for `--trace`/`--screenshot` made a
+      second one, and whichever monitor AppKit called first took the arrows.
+- [x] **The diagnostic scene is only built when a diagnostic flag asks for it.** The interactive
+      run builds its own through `GameCoordinator`.
+- [x] **Held keys are released when the app resigns active**, so a key held across a switch away
+      does not leave the Prince walking on his own when the player comes back.
+
+**Notes:**
+- **`--trace` and `--screenshot` were the cause, and the app looked innocent.** Both instances
+  were always constructed; what differed was whether the throwaway global was still alive when
+  the keys arrived:
+
+  | Build | Result |
+  |---|---|
+  | `swift run Prince` (debug) | the throwaway's monitor is first, swallows every arrow, game gets nothing |
+  | `Prince of Persia.app` (release) | the throwaway was dropped early, so the real input works |
+
+  "Sometimes" was the build configuration. Found by instrumenting the monitor, not by reading.
+- **A local monitor is a process-wide side effect owned by a per-instance object**, which is the
+  shape of the bug. `KeyboardInput.listening` now drops the swallow when another instance is
+  alive — a courtesy is not worth somebody else's key.
+- **No unit test covers this.** It needs a real event loop and a real key event; the guards are
+  the single owner, the counter, and the note on the class. Both build configurations were run by
+  hand, with a synthetic arrow from `osascript`.
 
 ---
 

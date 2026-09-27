@@ -1722,6 +1722,42 @@ locomotion path needs no screen-space geometry at all. The remaining gate test i
 `tile.canCross(height)`, surfaced as `TileWorld.gateBlocks` — which correctly answers "yes,
 blocking" until M7 wires the animated state, because gates begin closed.
 
+### 7.10.2 One keyboard, and why a second one is not harmless
+
+`KeyboardInput` samples the keys through `NSEvent.addLocalMonitorForEvents`. **A local monitor
+that returns `nil` ends the chain**, so no monitor registered after it ever sees that event —
+and this one returns `nil` for every key in `KeyBindings.reservedKeyCodes`, which exists so
+AppKit does not beep at an arrow it never handles.
+
+So a second `KeyboardInput` does not merely duplicate the work: **it silently takes the arrows
+away from the first one.** That is not a hypothetical. `main.swift` built a throwaway scene for
+the headless `--trace`/`--screenshot` paths before building the real one, and each made its own
+input. Both instances were always created; what differed was which monitor AppKit called first,
+which depended on whether the throwaway global was still alive:
+
+| Build | Throwaway scene | Result |
+|---|---|---|
+| `swift run Prince` (debug) | kept alive, so its monitor is first | it swallows every arrow, and the game receives nothing |
+| `Prince of Persia.app` (release) | dropped early, so its monitor is gone | the real input works |
+
+Which is exactly the report: *keys do not respond on app start — sometimes they do*, where
+"sometimes" was the build configuration.
+
+The fix is structural rather than defensive: **one `KeyboardInput` is created once, in
+`main.swift`, and handed to whichever path needs it.** The level scene is only built at all when
+a diagnostic flag asks for it, which also stops the app loading a level, its simulation and its
+atlases twice before the window appears.
+
+Two guards sit under that, neither of which replaces it:
+
+- **Swallowing is dropped when anyone else is listening.** `KeyboardInput.listening` counts live
+  instances, and the monitor only consumes a bound key while it is the only one. Swallowing is a
+  courtesy — it stops a beep; being heard is not a courtesy.
+- **Held keys are released when the app resigns active.** A `keyUp` follows the *active* app, so
+  a key held while the player switches away never reports its release. SpriteKit stops ticking in
+  the background, which hides the damage until they come back — and then the Prince walks off on
+  his own.
+
 ### 7.11 Game flow
 
 `GKStateMachine` for top-level states only — this is a genuine, contained win:
@@ -2050,6 +2086,10 @@ Where to look when you have a question. Keep this table current.
 | M9 | Key bindings live in Application Support, not the bundle | A signed `.app` is read-only, and the point of the file is that it can be edited |
 | M9 | `KeyBindings.load` never throws and never fails | A game that will not start because a config file has a typo in it is worse than one running with the defaults |
 | M9 | The binding decision is a pure method on a value type | It makes rebinding testable without a window, and it is the same split Law 6 asks for |
+| Input | Exactly one `KeyboardInput` per process, created in `main.swift` | A local monitor that swallows a key ends the chain, so a second instance takes the arrows away from the first. The throwaway scene for `--trace`/`--screenshot` made one, and whether the game answered depended on whether the optimiser had dropped it yet |
+| Input | The diagnostic scene is only built when a diagnostic flag needs it | The interactive run builds its own through `GameCoordinator`; building a second one loaded the level, its simulation and its atlases twice before the window appeared |
+| Input | A bound key is only swallowed while `KeyboardInput` is the only instance listening | Swallowing exists to stop AppKit beeping, which is a courtesy; losing a key to another monitor is not. This makes a repeat of the bug audible instead of silent |
+| Input | Held keys are released on `NSApplication.didResignActiveNotification` | A `keyUp` follows the active app, so a key held while switching away stays down for ever and the Prince walks off on his own when the player returns |
 | M6d | `ActorState.action` is a computed property whose setter rewinds `sequencePointer` | That is what the reference’s `action` setter does. As a stored property it worked everywhere except `startFall`, which skipped a `stepfall`’s `ACT 3` and cascaded into `actionCode`, `checkFloor` and `fallingBlocks` |
 | M6d | `GOTO` assigns through `assignActionDirectly` | The one opcode that bypasses the setter; going through it would restart every jump from the top and loop |
 | M6d | `Splash.show` is called before the action changes | `showSplash` refuses the four self-bloodying death animations, so the order decides whether a killing blow bleeds |

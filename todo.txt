@@ -1,5 +1,9 @@
 TODO:
 
+- Remember the resolution I set last time when restarting the app
+- When hanging from a hole in the floor in the first level it doesn't draw the room below, it draws the same room and falls to the same room, it should land on the room below
+- When floor tiles fall, the floor is not drawn with a hole, tiles are still in place but the prince can go down through them
+- Sword of first guard sometimes is shown, sometimes is not
 
 DONE:
 
@@ -8,3 +12,6 @@ DONE:
    not 11 px below it)
 - First level, a gate to the left opens but the prince can not walk pass it
   (a gate's collision rectangle shrinks as it rises; the port was using the flat one)
+- On app start sometimes keys don't respond, sometimes they do
+  (two KeyboardInputs, and the throwaway one swallowed every arrow; whether it did
+   depended on the build configuration)

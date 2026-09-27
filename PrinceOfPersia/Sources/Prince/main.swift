@@ -21,6 +21,7 @@ func buildScene(
     levelNumber: Int,
     hold: Intents?,
     seed: Int,
+    input: KeyboardInput,
     room override: Int? = nil,
     location overrideLocation: Int? = nil
 ) throws -> LevelScene {
@@ -47,7 +48,7 @@ func buildScene(
     }
 
     let scene = try LevelScene(
-        level: try LevelRuntime(level), input: KeyboardInput(), seed: seed
+        level: try LevelRuntime(level), input: input, seed: seed
     )
     scene.scriptedIntents = hold
     return scene
@@ -97,18 +98,37 @@ app.setActivationPolicy(.regular)
 let appDelegate = AppDelegate()
 app.delegate = appDelegate
 
-let scene: LevelScene
-do {
-    scene = try buildScene(
-        levelNumber: levelNumber,
-        hold: hold,
-        seed: seedValue,
-        room: value(for: "--room", in: arguments).flatMap(Int.init),
-        location: value(for: "--location", in: arguments).flatMap(Int.init)
-    )
-} catch {
-    FileHandle.standardError.write(Data("Failed to build the level: \(error)\n".utf8))
-    exit(1)
+/// The one keyboard for the process.
+///
+/// **Exactly one, created here, shared by every path that needs it.** `KeyboardInput` installs a
+/// local event monitor and *swallows* the keys it is bound to so AppKit does not beep at them;
+/// a swallowed event stops the monitor chain, so a second `KeyboardInput` whose keys are never
+/// read silences the first. There was one of those: the scene built for `--trace`/`--screenshot`
+/// made its own, and in a debug build it stayed alive, took the arrows and threw them away — the
+/// game got nothing, while the release build happened to drop it early and worked. Whether the
+/// keys answered depended on the build configuration, which is what "sometimes" was.
+let input = KeyboardInput()
+
+// The level scene exists only for the diagnostic paths. The interactive run is built by
+// `GameCoordinator`, and building a second scene here would mean loading the level, its
+// simulation and its atlases twice before the window ever appeared.
+let diagnosticScene: LevelScene?
+if arguments.contains("--trace") || value(for: "--screenshot", in: arguments) != nil {
+    do {
+        diagnosticScene = try buildScene(
+            levelNumber: levelNumber,
+            hold: hold,
+            seed: seedValue,
+            input: input,
+            room: value(for: "--room", in: arguments).flatMap(Int.init),
+            location: value(for: "--location", in: arguments).flatMap(Int.init)
+        )
+    } catch {
+        FileHandle.standardError.write(Data("Failed to build the level: \(error)\n".utf8))
+        exit(1)
+    }
+} else {
+    diagnosticScene = nil
 }
 
 // Diagnostic: render a single atlas frame at 1:1 so the slice can be compared against
@@ -146,7 +166,7 @@ if let frameName = value(for: "--dump-frame", in: arguments),
     }
 }
 
-if arguments.contains("--trace") {
+if arguments.contains("--trace"), let scene = diagnosticScene {
     let ticks = value(for: "--ticks", in: arguments).flatMap(Int.init) ?? 30
     var sounds: [SoundEffect] = []
     var music: [PoPCore.MusicTrack] = []
@@ -187,7 +207,7 @@ if arguments.contains("--trace") {
     exit(0)
 }
 
-if let path = value(for: "--screenshot", in: arguments) {
+if let path = value(for: "--screenshot", in: arguments), let scene = diagnosticScene {
     let ticks = value(for: "--ticks", in: arguments).flatMap(Int.init) ?? 1
     scene.advance(ticks: ticks)
 
@@ -223,7 +243,6 @@ if let path = value(for: "--screenshot", in: arguments) {
     }
     app.run()
 } else {
-    let input = KeyboardInput()
     let view = SKView()
     let muted = arguments.contains("--mute") || arguments.contains("--no-audio")
     let music = !arguments.contains("--no-music") && !arguments.contains("--no-audio")
