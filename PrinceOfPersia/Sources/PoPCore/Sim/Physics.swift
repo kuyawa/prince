@@ -381,7 +381,7 @@ public enum FallCycle {
         try interpreter.step(&state, world: world, effects: &effects)
     }
 
-    /// `Fighter.startFall` — the open-air path. Returns the action begun.
+    /// `Kid.startFall` — the open-air path. Returns the action begun.
     ///
     /// The reference's `maskTile` calls only affect what the renderer draws, so they
     /// are not reproduced here; M4 handles masking from the tile map directly.
@@ -403,6 +403,12 @@ public enum FallCycle {
         // his opponent rather than away from the wall he just hit.
         state.backwardsFall = state.swordDrawn ? -1 : 1
 
+        // **Letting go of a ledge is not a step fall.** It has two actions of its own, and which
+        // one runs is decided by what is underneath him.
+        if state.action.hasPrefix("hang") {
+            return try releaseLedge(&state, world: world, interpreter: interpreter, effects: &effects)
+        }
+
         var action = "stepfall"
         if state.charFrame == 44 { action = "rjumpfall" }
         if state.charFrame == 26 { action = "jumpfall" }
@@ -417,5 +423,62 @@ public enum FallCycle {
         state.action = action
         try interpreter.step(&state, world: world, effects: &effects)
         return action
+    }
+
+    /// `Kid.startFall`'s hang branch — letting go of a ledge.
+    ///
+    /// ```js
+    /// if (this.action.substring(0, 4) === "hang") {
+    ///   let blockX = this.charBlockX;
+    ///   if (this.action === "hangstraight") { blockX -= this.charFace; }
+    ///   let tile = this.level.getTileAt(blockX, this.charBlockY, this.room);
+    ///   if (![SPACE, TOP_BIG_PILLAR, TAPESTRY_TOP].includes(tile.element)) {
+    ///     tile = this.level.getTileAt(this.charBlockX, this.charBlockY, this.room);
+    ///     if (tile.isBarrier()) { this.charX -= 7 * this.charFace; }
+    ///     this.action = "hangdrop";       // ground under him: drop, and land on it
+    ///     this.stopFall();
+    ///   } else {
+    ///     tile = this.level.getTileAt(this.charBlockX, this.charBlockY, this.room);
+    ///     if (tile.isBarrier()) { this.charX -= 7 * this.charFace; }
+    ///     this.action = "hangfall";       // a hole under him: let go and go through it
+    ///     this.level.maskTile(this.charBlockX - this.charFace, this.charBlockY, this.room, this);
+    ///     this.processCommand();
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// The port used to answer this with a bare `action = "stepfall"`, which threw the decision
+    /// away. `stepfall` probes the floor as soon as `checkFloorStepFall` is armed — so a Prince
+    /// who let go of a hole landed on the floor *beside* it, in the room he was already in,
+    /// instead of dropping through to the room below. Walking off the same hole worked, because
+    /// that path never goes through here; only the ledge did.
+    ///
+    /// `hangstraight` is the pose he takes when the wall is in front of him, and it hangs him a
+    /// column behind where it looks, which is why the probe moves back by `charFace`.
+    @discardableResult
+    static func releaseLedge(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws -> String {
+        var overX = state.charBlockX
+        if state.action == "hangstraight" { overX -= state.charFace }
+        let over = world.tile(x: overX, y: state.charBlockY, room: state.room)
+
+        // Either way he is pushed clear of whatever he has been hanging against.
+        let under = world.tile(x: state.charBlockX, y: state.charBlockY, room: state.room)
+        if under.kind.isBarrier { state.charX -= 7 * state.charFace }
+
+        let empty: Set<TileKind> = [.space, .topBigPillar, .tapestryTop]
+        if empty.contains(over.kind) {
+            state.beginAction("hangfall")
+            try interpreter.step(&state, world: world, effects: &effects)
+            return "hangfall"
+        }
+
+        state.beginAction("hangdrop")
+        stopFall(&state)
+        return "hangdrop"
     }
 }

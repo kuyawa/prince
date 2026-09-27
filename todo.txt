@@ -1,14 +1,14 @@
 TODO:
 
-- When hanging from a hole in the floor in the first level it doesn't draw the room below, it draws the same room and falls to the same room, it should land on the room below
-  (tried: hang at the hole and hang on the floor beside it, in every room of level 1 with a
-   floor hole - 8 room/column pairs - and every one crosses to the room below on release.
-   Need the room number: which room is the Prince in when he hangs?)
 - When floor tiles fall, the floor is not drawn with a hole, tiles are still in place but the prince can go down through them
 - Sword of first guard sometimes is shown, sometimes is not
 
 DONE:
 
+- When hanging from a hole in the floor in the first level it doesn't draw the room below, it draws the same room and falls to the same room, it should land on the room below
+  (releasing a ledge now runs hangfall or hangdrop, as Kid.startFall does; the port
+   answered both with stepfall, which probes the floor and landed him where he was.
+   The turn on the way to the edge is what armed that probe)
 - Remember the resolution I set last time when restarting the app
   (the View menu writes window.json; --scale still overrides for one launch)
 - On app start sometimes keys don't respond, sometimes they do

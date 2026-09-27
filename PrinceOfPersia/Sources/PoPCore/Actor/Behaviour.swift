@@ -157,13 +157,13 @@ public enum Behaviour {
                 effects.append(.shookLooseBoard(ref))
                 if world.trob(x: state.charBlockX, y: state.charBlockY - 1, room: state.room)?
                     .looseBoard?.fallStarted == true {
-                    return hangFall(&state)
+                    return try hangFall(&state, world: world, interpreter: interpreter, effects: &effects)
                 }
             }
             if intents.contains(.up), !state.grabWait {
                 return climbup(&state, world: world, effects: &effects)
             }
-            if !intents.contains(.action) { return hangFall(&state) }
+            if !intents.contains(.action) { return try hangFall(&state, world: world, interpreter: interpreter, effects: &effects) }
             if state.charFrame == 92 { state.ledgeSwing += 1 }
 
         case "hangstraight":
@@ -171,7 +171,7 @@ public enum Behaviour {
             if intents.contains(.up), !state.grabWait {
                 return climbup(&state, world: world, effects: &effects)
             }
-            if !intents.contains(.action) { return hangFall(&state) }
+            if !intents.contains(.action) { return try hangFall(&state, world: world, interpreter: interpreter, effects: &effects) }
 
         case "climbup", "climbdown":
             state.charRepeat = false
@@ -209,11 +209,22 @@ public enum Behaviour {
         }
     }
 
-    /// Letting go of a ledge. The action change is picked up by the caller's dispatch.
-    private static func hangFall(_ state: inout ActorState) {
-        state.isInFallDown = true
-        state.swordDrawn = false
-        state.beginAction("stepfall")
+    /// Letting go of a ledge.
+    ///
+    /// This used to be a bare `action = "stepfall"`, which is not what the reference does:
+    /// `Kid.startFall` has a whole branch for the hanging actions that chooses between
+    /// `hangfall` and `hangdrop` on what is underneath him. `stepfall` probes the floor, so a
+    /// Prince who let go over a hole landed beside it in the room he was already in. See
+    /// `FallCycle.releaseLedge`.
+    private static func hangFall(
+        _ state: inout ActorState,
+        world: any TileWorld,
+        interpreter: SequenceInterpreter,
+        effects: inout [ActorEffect]
+    ) throws {
+        _ = try FallCycle.startFall(
+            &state, world: world, interpreter: interpreter, effects: &effects
+        )
     }
 
 

@@ -213,3 +213,84 @@ private func kid() -> SequenceInterpreter { makeKidInterpreter() }
     #expect(!state.isInFallDown)
     #expect(!state.swordDrawn)
 }
+
+// MARK: - Letting go
+
+/// A Prince hanging over column `x` of room 1, with the loose board at (6,2) either intact or
+/// already collapsed into a hole.
+private func hangingInRoomOne(at x: Int, overAHole: Bool) throws -> Simulation {
+    var data = try GameData.level(1)
+    data = data.replacingPrince(
+        PrinceSpawn(location: 27, room: 1, direction: 1, danger: false)
+    )
+    var simulation = try Simulation(level: LevelRuntime(data), seed: 1)
+
+    if overAHole {
+        simulation.world.shakeLooseBoard(at: TileRef(room: 1, x: 6, y: 2))
+        for _ in 0..<12 { simulation.tick(intents: .none) }
+    }
+
+    var prince = simulation.world.actors[0]
+    prince.room = 1
+    prince.charFace = -1
+    prince.charBlockX = x
+    prince.charBlockY = 2
+    prince.charX = CoordinateSpace.x(fromBlockX: x)
+    prince.charY = CoordinateSpace.y(fromBlockY: 2)
+    prince.baseY = 0
+    prince.charXVel = 0
+    prince.charYVel = 0
+    prince.isInFallDown = false
+    // **The turn is what sets this.** `startFall` arms an immediate floor probe for `turn`,
+    // `turnrun`, `turnengarde`, `highjump` and `hangdrop`, and `checkFall` consumes it — so a
+    // Prince who turned on the way to the edge arrives at the ledge with the probe still armed.
+    // A hang that then answered with a plain `stepfall` would spend that probe landing him on the
+    // floor beside the hole instead of dropping him through it.
+    prince.checkFloorStepFall = true
+    prince.beginAction("hang")
+    prince.charFrame = 92
+    simulation.world.actors[0] = prince
+    return simulation
+}
+
+@Test func lettingGoOverAHoleFallsThroughIt() throws {
+    // The reported bug: hang from the edge of the hole the loose board left, let go, and instead
+    // of dropping into the room below he lands back in the room he was in.
+    //
+    // `Kid.startFall` answers a hanging action with one of two actions of its own — `hangfall`,
+    // let go and go *through*, or `hangdrop`, let go and land — and which one it is depends on
+    // what is underneath him. The port answered both with a bare `stepfall`, which is the action
+    // for stepping off a ledge, not for releasing one.
+    var simulation = try hangingInRoomOne(at: 6, overAHole: true)
+    #expect(simulation.world.prince.action == "hang")
+
+    var actions: [String] = []
+    for _ in 1...12 {
+        simulation.tick(intents: .none)
+        let action = simulation.world.prince.action
+        if actions.last != action { actions.append(action) }
+    }
+
+    #expect(actions.contains("hangfall"), "over a hole the action is hangfall: \(actions)")
+    #expect(!actions.contains("stepfall"), "and not the step fall: \(actions)")
+    #expect(simulation.world.prince.room == 2, "he went through the hole, not back onto it")
+}
+
+@Test func lettingGoOverGroundDropsAndLands() throws {
+    // The other half of the same decision. Column 7 is the floor beside the hole, so the answer
+    // is `hangdrop`: he drops where he is and lands. Anything else would send him through solid
+    // ground.
+    var simulation = try hangingInRoomOne(at: 7, overAHole: true)
+
+    var actions: [String] = []
+    for _ in 1...12 {
+        simulation.tick(intents: .none)
+        let action = simulation.world.prince.action
+        if actions.last != action { actions.append(action) }
+    }
+
+    #expect(actions.contains("hangdrop"), "over ground the action is hangdrop: \(actions)")
+    #expect(!actions.contains("hangfall"))
+    #expect(simulation.world.prince.room == 1)
+    #expect(simulation.world.prince.action == "stand")
+}

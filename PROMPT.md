@@ -55,7 +55,7 @@ Repeat these back before you start work. Violating any one of them is how this p
 | | |
 |---|---|
 | **Current milestone** | — nothing open. The port is feature-complete |
-| **Last completed** | **The twenty-frame guard in `Kid.checkRoomChange`** — the vertical room change was applying on frames the reference skips. 381 tests pass |
+| **Last completed** | **Releasing a ledge runs `hangfall` or `hangdrop`** — the port answered both with `stepfall`. 383 tests pass |
 | **Blocked on** | nothing |
 | **Open questions** | 7, listed in `ARCHITECTURE.md` §10 |
 | **Next action** | Optional, in rough value order: cutscenes (open question 5), the shadow overlay (levels 5/6), a title screen. Or stop — it plays |
@@ -630,29 +630,37 @@ Asked for as: *remember the resolution I set last time when restarting the app.*
 
 ---
 
-### The vertical room change ⚠️ *partly done*
+### Releasing a ledge ✅ *complete*
 
-Reported as: *when hanging from a hole in the floor in the first level it doesn't draw the room
-below, it draws the same room and falls to the same room, it should land on the room below.*
+Reported as: *when hanging from the hole the loose board left in the first room, it shows the same
+room as expected, but releasing shift makes him fall back into the same room instead of the room
+below — while simply walking or running off the same hole works.*
 
-- [x] **`Kid.checkRoomChange` reproduces the reference's twenty-frame early return.** The port had
-      skipped it on the stated grounds that the guard could not affect the `charY` test below; the
-      guard is the function's first statement, so it is the one thing the test is subject to.
-- [ ] **The reported symptom is NOT reproduced, and this stays open.**
+- [x] **`Kid.startFall`'s hang branch is reproduced.** Releasing a ledge runs `hangfall` — let go
+      and go through — or `hangdrop` — let go and land — chosen on what is underneath him. The
+      port answered both with a bare `stepfall`, which is the action for *stepping off* a ledge.
+- [x] **`Kid.checkRoomChange` reproduces the reference's twenty-frame early return**, found on the
+      way through. The port had skipped it on the stated grounds that the guard could not affect
+      the `charY` test below; the guard is the function's first statement, so it is the one thing
+      that test is subject to.
 
 **Notes:**
-- **Every floor hole in level 1 crosses correctly.** Swept with a scripted walk-off-and-drop:
-  room 8's (4,2) hole → room 11, room 12's (5,2) → 19, room 22's (1,2) → 15, room 20's (5,2) → 4,
-  room 15's (6,2) → 10. In each case `room` changes at `charY > 189`, exactly as the reference
-  does, and the actor lands in the room below.
-- **Hanging behaves the same way.** Falling into room 8's hole with the action key held hangs him
-  at `(4,2)`, `charY` 179; releasing drops him and he crosses to room 11 on the way down.
-- **What is still unexplained is the drawing.** While hanging through a floor hole his
-  `charBlockY` is the *upper* room's bottom row and `charY` is 179, so the upper room is drawn —
-  and the original does the same: `leave_room` in SDLPoP switches rooms at `Char.y >= 211`, not at
-  the floor line. So the hang staying in the upper room is correct, and the report is about
-  something else. **Need the room the player was in.**
+- **The turn is what tipped it over.** `startFall` arms `checkFloorStepFall` — an immediate floor
+  probe — for `turn`, `turnrun`, `turnengarde`, `highjump` and `hangdrop`, and `checkFall`
+  consumes it. Turning on the way to the edge leaves that probe armed. `hangfall` never probes,
+  so it is immune; a `stepfall` spends it on the first tick and lands him where he is.
+- **The same mistake did the opposite thing elsewhere.** `stepfall` also ignores what is
+  underneath him, so hanging *beside* a hole rather than over it, the old code dropped him
+  through solid floor into the room below.
+- **Walking off is a different path.** It goes through `checkFloorStanding` rather than
+  `startFall`, which is why only the ledge was wrong and it looked like a hang bug.
+- **`hangfall` and `hangdrop` had been in `kid.json` all along**, unused.
+- **Reproduced by forcing the hang state**, not by playing: the sim will not let him catch that
+  particular edge without the turn that arms the probe, which is itself the clue.
 
+---
+
+## Verification commands
 ---
 
 ## Verification commands

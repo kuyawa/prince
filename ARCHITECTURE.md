@@ -1569,6 +1569,50 @@ one of them would apply the flip on the wrong side of a room boundary.
 the right-hand column drops into the room below the one to its right, and one at the left column
 into the room below the one to its left.
 
+### 7.9.19 Letting go of a ledge is not a step fall
+
+`Kid.startFall` opens with a branch the port did not have at all:
+
+```js
+if (this.action.substring(0, 4) === "hang") {
+  let blockX = this.charBlockX;
+  if (this.action === "hangstraight") { blockX -= this.charFace; }
+  let tile = this.level.getTileAt(blockX, this.charBlockY, this.room);
+  if (![SPACE, TOP_BIG_PILLAR, TAPESTRY_TOP].includes(tile.element)) {
+    tile = this.level.getTileAt(this.charBlockX, this.charBlockY, this.room);
+    if (tile.isBarrier()) { this.charX -= 7 * this.charFace; }
+    this.action = "hangdrop";        // ground under him: drop, and land on it
+    this.stopFall();
+  } else {
+    tile = this.level.getTileAt(this.charBlockX, this.charBlockY, this.room);
+    if (tile.isBarrier()) { this.charX -= 7 * this.charFace; }
+    this.action = "hangfall";        // a hole under him: let go and go through it
+    this.level.maskTile(this.charBlockX - this.charFace, this.charBlockY, this.room, this);
+    this.processCommand();
+  }
+}
+```
+
+**Releasing a ledge is one of two actions of its own, and which one runs is decided by what is
+underneath him.** The port answered both with a bare `action = "stepfall"` — the action for
+stepping off a ledge, not for releasing one — so the decision, the `7 * charFace` nudge clear of
+the wall, and the two sequences were all missing.
+
+It shows up as a Prince who hangs over the hole the loose board left, lets go, and lands on the
+floor *beside* it in the room he was already in. Two things conspire:
+
+- `startFall` arms `checkFloorStepFall` — an immediate floor probe — for `turn`, `turnrun`,
+  `turnengarde`, `highjump` and `hangdrop`, and `checkFall` consumes it. A player who **turns** on
+  the way to the edge therefore arrives at the ledge with the probe still armed. `hangfall` never
+  probes, so it is immune; a `stepfall` spends the probe on the first tick and lands him.
+- `stepfall` also ignores what is underneath him, which is the other half of the same bug: hanging
+  beside a hole rather than over it, the old code dropped him through solid floor into the room
+  below.
+
+Walking or running off the same hole was always right, because that path goes through
+`checkFloorStanding` rather than through here. Only the ledge was wrong, which is why it looked
+like a hang bug rather than a falling one.
+
 ### 7.15 Which way the artwork faces
 
 ```js
@@ -2153,6 +2197,7 @@ Where to look when you have a question. Keep this table current.
 | Ledge | `tryGrabEdge` is two probes, front (reach 30) then overhead (reach 20) | The second catches a Prince who has drifted past the edge and is falling down its face |
 | Ledge | `charX` stays `Int`; the fractional swing is carried in `ledgeSwingHalves` | `checkLedgeSwing` adds 1.5 a tick, the only fractional `charX` in the engine. Carrying the half reproduces the whole units exactly |
 | Ledge | `grabWait` counts six ticks rather than reading a clock | The same substitution as the potion delay: 500 ms at 1/12 s |
+| Ledge | Letting go of a ledge runs `hangfall` or `hangdrop`, not `stepfall` | `Kid.startFall` decides between them on what is underneath him, and the port had neither. A `stepfall` probes the floor, so a Prince who turned on the way to the edge — which arms that probe — landed beside the hole instead of dropping through it |
 | M3c | `canReachOpponent` is the real path walk, not a distance test | `SpriteMetrics` unblocked it along with `checkBarrier`. A guard can no longer engage through a wall the original would have stopped at |
 | M3c | `checkPathToOpponent` keeps the reference’s `+ 10` widening for a cross-room opponent | It is what lets a guard at a doorway reach into the next room; without it guards never notice a Prince in the next room |
 | M3c | `checkBarrier` is transcribed screen geometry over cel sizes, not a physics model | Every rectangle in it comes from measured cels; trying to re-derive it in engine units was the mistake that kept open question 11 open |
